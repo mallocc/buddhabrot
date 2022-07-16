@@ -143,9 +143,9 @@ int y = ((t_im[j] - p_im) * cos(beta)  - (c_re - p_re) * sin(beta)  - y0) / (h /
 ```
 where `p_` is the point of interstion we want to rotate around. Note this is more readable in my source code!
 
-|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_cr.gif)|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_ci.gif)|
-|:-:|:-:|
-| Rotation about the axis of `c_re`, from 0 to 180 degrees | Rtation about the axis of `c_im`, from 0 to 180 degrees |
+|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_cr.gif)|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_ci.gif)|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_mandelbrot.gif)|
+|:-:|:-:|:-:|
+| Rotation about the axis of `c_re`, from 0 to 180 degrees | Rotation about the axis of `c_im`, from 0 to 180 degrees | Rotation on both axes of 90 degrees results in the Mandelbrot Set |
 
 
  
