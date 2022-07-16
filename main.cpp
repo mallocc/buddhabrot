@@ -11,8 +11,14 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+// Delicious
 #define PI 3.1415926f
 
+/**
+ *
+ * Mersenne Twister random number generator.
+ *
+ */
 float randf(const float range = 1.0f, bool sign = false)
 {
 	std::random_device rd;
@@ -21,7 +27,9 @@ float randf(const float range = 1.0f, bool sign = false)
 	return dis(gen) * range * (1.0f + (float)sign) - range * sign;
 }
 
-
+/**
+ * Very basic complex struc with operations.
+ */
 struct Complex
 {
 	float re, im;
@@ -29,48 +37,41 @@ struct Complex
 	Complex() : re(0.0f), im(0.0f) {}
 	Complex(float re, float im) : re(re), im(im) {}
 
-	Complex add(const Complex& a)
-	{
-		return Complex(re + a.re, im + a.im);
-	}
+	Complex add(const Complex& a) { return Complex(re + a.re, im + a.im); }
 	Complex operator+(const Complex& a) { return add(a); }
-	Complex sub(const Complex& a)
-	{
-		return Complex(re - a.re, im - a.im);
-	}
+	Complex sub(const Complex& a) { return Complex(re - a.re, im - a.im); }
 	Complex operator-(const Complex& a) { return sub(a); }
-	Complex mult(const Complex& a)
-	{
-		return Complex(re * a.re - im * a.im, re * a.im + im * a.re);
-	}
+	Complex mult(const Complex& a) { return Complex(re * a.re - im * a.im, 
+													re * a.im + im * a.re); }
 	Complex operator*(const Complex& a) { return mult(a); }
 
 	Complex operator/(float a) { return Complex(re / a, im / a); }
 	Complex operator*(float a) { return Complex(re * a, im * a); }
 
-	float mod2()
-	{
-		return re * re + im * im;
-	}
+	float mod2() { return re * re + im * im; }
 
-	operator std::string()
-	{
-		return "(" + std::to_string(re) + ", " + std::to_string(im) + "i)";
-	}
+	operator std::string() { return "(" + std::to_string(re) + ", "
+										+ std::to_string(im) + "i)"; }
 };
 
-struct BuddhabrotStage
-{
-	Complex v0 = Complex(-2, -1.5);
-	Complex v1 = Complex(1, 1.5);
-	float alpha = 0;
-	float beta = 0;
-	float theta = 0;
-	int steps = 1;
-};
-
+/**
+ * Main buddhabrot rendering structure.
+ */
 struct BuddhabrotRenderer
 {
+	/**
+	 * Stage struct to hold info for animation key frame.
+	 */
+	struct Stage
+	{
+		Complex v0 = Complex(-2, -1.5);
+		Complex v1 = Complex(1, 1.5);
+		float alpha = 0;
+		float beta = 0;
+		float theta = 0;
+		int steps = 1;
+	};
+
 	BuddhabrotRenderer() {}
 
 	uint8_t* pixelData = nullptr;
@@ -101,57 +102,28 @@ struct BuddhabrotRenderer
 
 	int counter = 0;
 
-	std::vector<BuddhabrotStage> stages;
+	std::vector<Stage> stages;
 
-	//void translateUp(float t)
-	//{
-	//	Complex size = stage0.v1 - v0;
-	//	center.im -= size.im * t;
-	//	v0 = center - (size / 2.0f);
-	//	v1 = center + (size / 2.0f);
-	//}
-	//void translateDown(float t)
-	//{
-	//	Complex size = v1 - v0;
-	//	center.im += size.im * t;
-	//	v0 = center - (size / 2.0f);
-	//	v1 = center + (size / 2.0f);
-	//}
-	//void translateRight(float t)
-	//{
-	//	Complex size = v1 - v0;
-	//	center.re += size.re * t;
-	//	v0 = center - (size / 2.0f);
-	//	v1 = center + (size / 2.0f);
-	//}
-	//void translateLeft(float t)
-	//{
-	//	Complex size = v1 - v0;
-	//	center.re -= size.re * t;
-	//	v0 = center - (size / 2.0f);
-	//	v1 = center + (size / 2.0f);
-	//}
-	//void scale(float s)
-	//{
-	//	Complex size = v1 - v0;
-	//	v0 = center - (size / 2.0f) * s;
-	//	v1 = center + (size / 2.0f) * s;
-	//}
-
+	// This should initialise the data arrays and another 
+	// members that's value are derived from other.
 	void init()
 	{
-		components = (iterationsR > 0 || iterationsG > 0 || iterationsB > 0) ? 3 : 1;
+		components = ( iterationsR > 0 
+					|| iterationsG > 0 
+					|| iterationsB > 0) ? 3 : 1;
 
 		buddhaData = new int[width * height];
 		pixelData = new uint8_t[width * height * components];
 	}
 
+	// Zeros all of the buddhaData array
 	void clearBuddhaData()
 	{
 		for (int i = 0; i < width * height; ++i)
 			buddhaData[i] = 0;
 	}
 
+	// Zeros both buddhaData and pixelData arrays
 	void clearAll()
 	{
 		clearBuddhaData();
@@ -159,44 +131,60 @@ struct BuddhabrotRenderer
 			pixelData[i] = 0;
 	}
 
-	void processFrame(const Complex& v0, const Complex& v1, const Complex& zr, const Complex& cr,
-		const float alphaL, const float betaL, const float thetaL, const int step)
+	// Processes a single frame with the provided properties
+	void processFrame(const Complex& v0, const Complex& v1, 
+					  const Complex& zr, const Complex& cr,
+					  const float alphaL, const float betaL, const float thetaL,
+					  const int step)
 	{
 		bool componentOverride = false;
 
 		if (iterationsR > 0)
 		{
 			LOG("Processing red channel... ");
-			process(buddhaData, width, height, samples, iterationsR, radius, v0, v1, zr, cr,
-				alphaL, betaL, thetaL, false, escapeThresholdR, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, gamma, 0);
+			process(buddhaData, 
+				width, height, samples, iterationsR, radius, 
+				v0, v1, zr, cr,
+				alphaL, betaL, thetaL, 
+				false, escapeThresholdR, iterationsMin);
+			getPixelData(width, height, components, buddhaData, pixelData, 
+				gamma, 0);
 			clearBuddhaData();
 			componentOverride = true;
 		}
 		if (iterationsG > 0)
 		{
 			LOG("Processing green channel... ");
-			process(buddhaData, width, height, samples, iterationsG, radius, v0, v1, zr, cr,
-				alphaL, betaL, thetaL, false, escapeThresholdG, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, gamma, 1);
+			process(buddhaData, width, height, samples, iterationsG, radius, 
+				v0, v1, zr, cr,
+				alphaL, betaL, thetaL, 
+				false, escapeThresholdG, iterationsMin);
+			getPixelData(width, height, components, buddhaData, pixelData, 
+				gamma, 1);
 			clearBuddhaData();
 			componentOverride = true;
 		}
 		if (iterationsB > 0)
 		{
 			LOG("Processing blue channel... ");
-			process(buddhaData, width, height, samples, iterationsB, radius, v0, v1, zr, cr,
-				alphaL, betaL, thetaL, false, escapeThresholdB, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, gamma, 2);
+			process(buddhaData, width, height, samples, iterationsB, radius, 
+				v0, v1, zr, cr,
+				alphaL, betaL, thetaL, 
+				false, escapeThresholdB, iterationsMin);
+			getPixelData(width, height, components, buddhaData, pixelData, 
+				gamma, 2);
 			clearBuddhaData();
 			componentOverride = true;
 		}
 
 		if (!componentOverride)
 		{
-			process(buddhaData, width, height, samples, iterations, radius, v0, v1, zr, cr,
-				alphaL, betaL, thetaL, false, escapeThreshold, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, gamma);
+			process(buddhaData, width, height, samples, iterations, radius, 
+				v0, v1, zr, cr,
+				alphaL, betaL, thetaL, 
+				false, escapeThreshold, iterationsMin);
+			getPixelData(width, height, components, buddhaData, pixelData, 
+				gamma);
 		}
 
 		writeToPNG(filename.empty() ? "" : filename + std::to_string(step),
@@ -204,21 +192,28 @@ struct BuddhabrotRenderer
 	}
 
 
+	// Linear interpolation
 	static float b1(float x0, float x1, float t)
 	{
 		return x0 + (x1 - x0) * t;
 	}
 
+	// Quadratic interpolation
 	static float b2(float x0, float x1, float x2, float t)
 	{
 		return pow(1 - t, 2) * x0 + 2 * (1 - t) * t * x1 + t * t * x2;
 	}
 
+	// Cubic interpolation
 	static float b3(float x0, float x1, float x2, float x3, float t)
 	{
-		return pow(1 - t, 3) * x0 + 3 * t * pow(1 - t, 2) * x1 + 3 * pow(t,2) * (1 - t) * x2 + pow(t, 3) * x3;
+		return pow(1 - t, 3) * x0 
+				+ 3 * t * pow(1 - t, 2) * x1 
+				+ 3 * pow(t, 2) * (1 - t) * x2 
+				+ pow(t, 3) * x3;
 	}
 
+	// Runs the renderer with the options specified
 	void run()
 	{
 		init();
@@ -262,9 +257,9 @@ struct BuddhabrotRenderer
 						float b = b3(0, 0, 1, 1, step / (float)steps); // ease in out
 						//float b = b3(0, 1, 1, 1, step / (float)steps); // ease in
 						//float b = b3(0, 1, 0, 1, step / (float)steps); // ease out
-						alphaL	= (b * (stages[stage + 1].alpha - stages[stage].alpha)	+ stages[stage].alpha)	/ 180 * PI;
-						betaL	= (b * (stages[stage + 1].beta	- stages[stage].beta)	+ stages[stage].beta)	/ 180 * PI;
-						thetaL	= (b * (stages[stage + 1].theta - stages[stage].theta)	+ stages[stage].theta)	/ 180 * PI;
+						alphaL = (b * (stages[stage + 1].alpha - stages[stage].alpha) + stages[stage].alpha) / 180 * PI;
+						betaL = (b * (stages[stage + 1].beta - stages[stage].beta) + stages[stage].beta) / 180 * PI;
+						thetaL = (b * (stages[stage + 1].theta - stages[stage].theta) + stages[stage].theta) / 180 * PI;
 						v0.re = (b * (stages[stage + 1].v0.re - stages[stage].v0.re) + stages[stage].v0.re);
 						v0.im = (b * (stages[stage + 1].v0.im - stages[stage].v0.im) + stages[stage].v0.im);
 						v1.re = (b * (stages[stage + 1].v1.re - stages[stage].v1.re) + stages[stage].v1.re);
@@ -281,22 +276,31 @@ struct BuddhabrotRenderer
 		}
 	}
 
-	static void process(int* data, int w, int h, int samples,
-		int iter, int radius = 4.0f, const Complex& minc = Complex(-2, -2), const Complex& maxc = Complex(2, 2),
+	// This is the main buddhabrot algorithm in one function
+	static void process(
+		int* data, int w, int h, int samples, int iter, int radius = 4.0f, 
+		const Complex& minc = Complex(-2, -2), 
+		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
 		float alpha = 0, float beta = 0, float theta = 0, bool anti = false,
 		int threshold = 0, int floorIter = 0, int threadCount = 0)
 	{
+		// pre commpute //
+
+		// flag for if we are using the minimum threshold
 		bool escapeColouring = threshold > 0;
 
-		// pre commpute
+		// find the size of the viewable complex plane
 		Complex size = Complex(maxc) - minc;
+
+		// for use in the loop for converting back to screen space
 		float cw = w / (size.re);
 		float ch = h / (size.im);
 
+		// the center of the viewable complex plane
 		Complex center = size / 2.0f + minc;
 
-
+		// find the OpenMP thread count
 		if (threadCount == 0) {
 #pragma omp parallel
 			{
@@ -317,44 +321,56 @@ struct BuddhabrotRenderer
 
 			// track i
 			int i = 0;
-			// we only care about trajetories that are less than max iterations in length
-			// and that they fall within the radius bounds
+			// we only care about trajetories that are less than max iterations 
+			// in length and that they fall within the radius bounds
 			for (; i < iter && z.mod2() < radius; ++i)
 			{
+				// translations through the shape (there are 4 axes)
 				z = z + zr;
 				c = c + cr;
+				// apply the magic formula
 				z = z * z + c;
-				// store our samples position for later
+				// store our sample complex position for later
 				csamples[i] = z;
 			}
 
-			// if we want to rotate around a point, we must translate the point to the origin first
+			// if we want to rotate around a point, we must translate the point
+			// to the origin first (we will do it for Z later, remember 4 axes)
 			c = c - center;
 
-			// flags to which between normal and anti brot
+			// filter for minimum iterations
 			if (i >= floorIter)
+				// flags to check between normal and anti brot
 				if ((!anti && i < iter) || (anti && i == iter))
-					// iterate through our valid iterations
+					// iterate through our valid iterations samples
 					for (int j = 0; j < i; ++j)
 					{
-						// rotate around current center point
+						// rotate around current center point //
 						Complex& t = csamples[j];
-						// if we want to rotate around a point, we must translate the point to the origin first
+
+						// if we want to rotate around a point, 
+						// we must translate the point to the origin first
 						t = t - center;
-						// now apply the rotation matrix, but 'push out' using the axis of the inital point c
-						// if c was replaced with t, you would be just rotating a flat image around
-						t.re = t.re * cos(alpha + theta) + c.im * sin(alpha + theta);
-						t.im = t.im * cos(beta + theta) - c.re * sin(beta + theta);
+						// now apply the rotation matrix on t and c (these are
+						// the points on the 4d volume)
+						t.re = t.re * cos(alpha + theta) 
+								+ c.im * sin(alpha + theta);
+						t.im = t.im * cos(beta + theta) 
+								- c.re * sin(beta + theta);
 						// translate back to our point of interest
 						t = t + center;
 
-						// transform complex point into screen space point (screen coord)
+						// transform complex point into screen space point 
+						// (screen space coord)
 						int x = (t.re - minc.re) * cw;
 						int y = (t.im - minc.im) * ch;
 						// make sure it falls within in the screen buffer
 						if (x >= 0 && x < w && y >= 0 && y < h)
-							// incr each pixels components according to the colour thresholds
-							data[(y * w + x)] += escapeColouring ? j >= threshold : j < iter;
+							// incr each pixels components according to the 
+							// colour thresholds
+							data[(y * w + x)] += escapeColouring 
+													? j >= threshold 
+													: j < iter;
 					}
 
 			// clean up the potential iteration samples for this sample
@@ -366,11 +382,14 @@ struct BuddhabrotRenderer
 		LOG("Progress: finished!");
 	}
 
+	// classic sqrt colouring using gamma correction
+	// higher the gamma, the brighter it is
 	static uint8_t sqrtColour(float x, float y, float gamma)
 	{
 		return pow(x / y, 1.0f / gamma) * UCHAR_MAX;
 	}
 
+	// normalises the buddhaData into pixelData
 	static void getPixelData(int w, int h, int c, int* buddhaData, uint8_t* pixelData, float gamma = 2.0f, int o = -1)
 	{
 		float maxVal = 1;
@@ -383,6 +402,7 @@ struct BuddhabrotRenderer
 					pixelData[i * c + cc] = sqrtColour(buddhaData[i], maxVal, gamma);
 	}
 
+	// writes pixelData out to a PNG using stb_image_write.h
 	static void writeToPNG(const std::string& filename, int w, int h, int c, uint8_t* data)
 	{
 		LOG("Writing out render to PNG image...");
@@ -413,8 +433,9 @@ int main(int argc, char* argv[])
 
 	bool success = true;
 
-	BuddhabrotStage stage;
+	BuddhabrotRenderer::Stage stage;
 
+	// read argumetions and populate options
 	while (!args.empty() && success)
 	{
 		std::string arg(args.top());
