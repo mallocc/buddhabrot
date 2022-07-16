@@ -70,6 +70,7 @@ struct BuddhabrotRenderer
 		float beta = 0;
 		float theta = 0;
 		int steps = 1;
+		float gamma = 2;
 	};
 
 	BuddhabrotRenderer() {}
@@ -94,8 +95,6 @@ struct BuddhabrotRenderer
 	int escapeThresholdG = 0;
 	int escapeThresholdB = 0;
 	int iterationsMin = 0;
-
-	float gamma = 2;
 
 	Complex zr;
 	Complex cr;
@@ -135,6 +134,7 @@ struct BuddhabrotRenderer
 	void processFrame(const Complex& v0, const Complex& v1, 
 					  const Complex& zr, const Complex& cr,
 					  const float alphaL, const float betaL, const float thetaL,
+					  const float gamma,
 					  const int step)
 	{
 		bool componentOverride = false;
@@ -251,6 +251,7 @@ struct BuddhabrotRenderer
 					float thetaL = stages[stage].theta;
 					Complex v0 = stages[stage].v0;
 					Complex v1 = stages[stage].v1;
+					float gamma = stages[stage].gamma;
 
 					if (stages.size() > 1)
 					{
@@ -260,19 +261,20 @@ struct BuddhabrotRenderer
 						alphaL = (b * (stages[stage + 1].alpha - stages[stage].alpha) + stages[stage].alpha) / 180 * PI;
 						betaL = (b * (stages[stage + 1].beta - stages[stage].beta) + stages[stage].beta) / 180 * PI;
 						thetaL = (b * (stages[stage + 1].theta - stages[stage].theta) + stages[stage].theta) / 180 * PI;
+						gamma = (b * (stages[stage + 1].gamma - stages[stage].gamma) + stages[stage].gamma);
 						v0.re = (b * (stages[stage + 1].v0.re - stages[stage].v0.re) + stages[stage].v0.re);
 						v0.im = (b * (stages[stage + 1].v0.im - stages[stage].v0.im) + stages[stage].v0.im);
 						v1.re = (b * (stages[stage + 1].v1.re - stages[stage].v1.re) + stages[stage].v1.re);
 						v1.im = (b * (stages[stage + 1].v1.im - stages[stage].v1.im) + stages[stage].v1.im);
 					}
 
-					processFrame(v0, v1, zr, cr, alphaL, betaL, thetaL, stepC + counter);
+					processFrame(v0, v1, zr, cr, alphaL, betaL, thetaL, gamma, stepC + counter);
 				}
 		}
 		else if (!stages.empty())
 		{
 			clearAll();
-			processFrame(stages[0].v0, stages[0].v1, zr, cr, stages[0].alpha / 180 * PI, stages[0].beta / 180 * PI, stages[0].theta / 180 * PI, 0);
+			processFrame(stages[0].v0, stages[0].v1, zr, cr, stages[0].alpha / 180 * PI, stages[0].beta / 180 * PI, stages[0].theta / 180 * PI, stages[0].gamma, 0);
 		}
 	}
 
@@ -482,7 +484,7 @@ int main(int argc, char* argv[])
 					else if (option == "im" || option == "iterations-min")
 						checkAndSet([&](const std::string& in) { bb.iterationsMin = std::stoi(in); });
 					else if (option == "gamma")
-						checkAndSet([&](const std::string& in) { bb.gamma = std::stof(in); });
+						checkAndSet([&](const std::string& in) { stage.gamma = std::stof(in); });
 					else if (option == "radius")
 						checkAndSet([&](const std::string& in) { bb.radius = std::stof(in); });
 					else if (option == "re0" || option == "x0" || option == "real0")
