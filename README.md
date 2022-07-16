@@ -53,8 +53,90 @@ We can add many options to the program to specify how we want the image to look:
  - `-n | --next | --next-stage` - will push all of the STAGE options to the list, and reset values for the next stage in the options
  - `-nc | --next-cpy | --next-stage-copy` - will push all of the STAGE options to the list, but will keep the values from the last stage (useful for appending stages in the options)
  
- # Algorithm
+# Algorithm
+
+## Mandelbrot Set
+Consider the standard Mandelbrot algorithm:
+```c++
+for (int x = 0; x < w; ++x)
+{
+  for (int y = 0; y < h; ++)
+  {
+    z_re = c_re = (x / w) * (x1 - x0) + x0;
+    z_im = c_im = (y / h) * (y1 - y0) + y0;
+
+    int i = 1;
+    for (; i < maxIterations && (z_re * z_re + z_im * z_im) < (radius * radius); ++i)
+    {
+      z_re = z_re * zre - z_im * z_im + c_re;
+      z_im = 2 * z_re * z_im + c_im;
+    }
+    
+    if (i < maxIteration)
+      pixelData[x + y * w] = i % MAX_PIXEL_VALUE; // apply your colouring technique here
+  }
+}
+```
+which generates the usual Mandelbrot set we are familiar with. It will iterate over each pixel on the screen, and calculate the pixel colour based on how many times it iterated.
+
+The idea is to work out where the corresponding pixel position in the complex plane ends up, and then colour the pixel depending on how far it went. Now there are two ways in which the trajectory stops:
+ 1. trajectory diverges and ends up traveling outside the radius bounds,
+ 2. or trajectory converges and ends up being attacted to a single point and can take potentially infinite iterations.
  
- todo
- 
+Usually colouring happens when 1. occurs for the pixel, and 2. means it hit infinity and should be coloured black. Bit like a black hole if it were a gravity field.
+
+## Buddhabrot (Density Plot of Mandelbrot Set)
+
+Theres is an interesting way to visualise the Mandelbrot set, which is to plot the density of each trajectory as they pass over the pixels. This is a sort of heat map of where the trajectories fall. This can be easily achieved by modifing the Mandelbrot algorithm to store the trajectory points:
+```c++
+float * t_re = new float[maxInterations];
+float * t_im = new float[maxInterations];
+for (int s = 0; s < samples; ++s)
+{ 
+    z_re = c_re = randf() * (x1 - x0) + x0;
+    z_im = c_im = randf() * (y1 - y0) + y0;
+
+    int i = 0;
+    for (; i < maxIterations && (z_re * z_re + z_im * z_im) < (radius * radius); ++i)
+    {
+      t_re[i] = z_re = z_re * zre - z_im * z_im + c_re;
+      t_im[i] = z_im = 2 * z_re * z_im + c_im;
+    }
+    
+    if (i < maxIteration)
+      for (int j = 0; j < i; ++i)
+      {
+        int x = (t_re[j] - x0) / (w / (x1 - x0));
+        int y = (t_im[j] - y0) / (h / (y1 - y0));
+        density[x + y * w]++;
+      }
+}
+```
+Notice that we are now not interating over the pixel positions, but randomly picking a starting position. We do this because we are trying to create a probability distribution of where trajectories fall. Using random samples helps us with this, because as the sample amount tends to infinity, the noise of the distribution falls to zero (like with any other distrubution).
+The only thing that makes it slightly more complicated is the conversion of the complex position back to screen space, but it's just a case rearranging the screen-to-complex forumla used in the Mandelbrot code.
+
+## Colouring
+The sqrt colouring method is commonly used with buddhabrot data. It is as simple as finding the highest value that occurs in the buddhabrot data, and then for each apply: `pixel[x + y * w] = sqrt(density[x + y * w]) / sqrt(maxDensity) * MAX_PIXEL_VALUE;`. Gamma correction can be used using: `pixel[x + y * w] = pow(density[x + y * w] / maxDensity, 1 / gamma) * MAX_PIXEL_VALUE;`.
+
+The examples talked about are for greyscale, but can easily scaled to use 3 colour components.
+
+There is a very nice way to colour the data that makes it look like a space nebula. This is done by producing 3 images of the same position, but at varying iterations for each colour component. The example image at the start of the readme uses the RGB iterations values (2000, 200, 20). Finally, combine all the colour channels together in the same image.
+
+## Rotation
+Effectively, the buddhabrot can be treated as a 4d object, and be rotated in such, to produce unintuitive and complex transformations. 
+
+Two of the basic intuitive axes of rotation (pitch and yaw) can be applied to the complex-to-screen coordinate conversion forumla:
+```c++
+int x = (t_re[j] * cos(alpha) + c_im * sin(alpha) - x0) / (w / (x1 - x0));
+int y = (t_im[j] * cos(beta)  - c_re * sin(beta)  - y0) / (h / (y1 - y0));
+```
+where `c_` is the starting point for the trajectory.
+
+We can rotate around a particular point of interest as well. This can be done by as easily as translating the trajectory point back to the origin, rotate and translate back again. The formula can be updated:
+```c++
+int x = ((t_re[j] - p_re) * cos(alpha) + (c_im - p_im) * sin(alpha) - x0) / (w / (x1 - x0)) + p_re;
+int y = ((t_im[j] - p_im) * cos(beta)  - (c_re - p_re) * sin(beta)  - y0) / (h / (y1 - y0)) + p_im;
+```
+where `p_` is the point of interstion we want to rotate around. Note this is more readable in my source code!
+
  
