@@ -5,9 +5,11 @@ Utitilty to generate density plot of mandelbrot set trajectories.
 
 |![](https://github.com/mallocc/buddhabrot/blob/main/tour_demo.gif)|
 |:--:|
-|`buddhabrot.exe -w 100 -h 100 -s 50000 -i 1000 -et 5 -o output/test1_ -steps 24 -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629 -nc -b 10 -a 60 -nc -a 89 -b 89 -nc -b 90 -a 90 -nc -a 90.5 -b 90.5 -steps 96 -nc -x0 -2 -y0 -1.5 -x1 1 -y1 1.5 -a 0 -b 180 -steps 48 -nc -b 0 -steps 12 -nc -steps 96 -nc -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629`|
+|`buddhabrot.exe -w 100 -h 100 -s 50000 -i 1000 -et 5 -o output/test1_ -steps 24 -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629 -nc -b 10 -a 60 -nc -a 89 -b 89 -nc -b 90 -a 90 -nc -a 90.5 -b 90.5 -steps 96 -nc -x0 -2 -y0 -1.5 -x1 1 -y1 1.5 -a 0 -b 180 -steps 48 -nc -b 0 -steps 12 -nc -steps 96 -nc -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629` ~60s render time|
+|![](https://github.com/mallocc/buddhabrot/blob/main/tour_demo_colour.gif)|
+|`buddhabrot.exe -w 200 -h 200 -s 1000000 -ir 2000 -ig 200 -ib 20 -o output/test2_ -steps 24 -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629 -nc -b 10 -a 60 -nc -a 89 -b 89 -nc -b 90 -a 90 -nc -a 90.5 -b 90.5 -steps 96 -nc -x0 -2 -y0 -1.5 -x1 1 -y1 1.5 -a 0 -b 180 -steps 48 -nc -b 0 -steps 12 -nc -steps 96 -nc -x0 -1.37422 -y0 -0.0863194 -x1 -1.37176 -y1 -0.0838629` ~35m render time|
 |![](https://github.com/mallocc/buddhabrot/blob/main/nebula_demo.png)|
-|`buddhabrot.exe -w 720 -h 720 -s 100000000 -ir 2000 -ig 200 -ib 20 -x0 -2 -y0 -1.5 -x1 1 -y1 1.5`|
+|`buddhabrot.exe -w 720 -h 720 -s 100000000 -ir 2000 -ig 200 -ib 20 -x0 -2 -y0 -1.5 -x1 1 -y1 1.5` ~10m render time|
 
 -----
 
@@ -22,7 +24,7 @@ I've added a shell script `test.sh` that will attempt to generate the anination 
 
 # Usage/Options
 
-We can added many options to the program to specify how we want the image to look:
+We can add many options to the program to specify how we want the image to look:
 
  - `-w | --width` - the width of the image (px)
  - `-h | --height` - the height of the image (px)
