@@ -122,6 +122,10 @@ The examples talked about are for greyscale, but can easily scaled to use 3 colo
 
 There is a very nice way to colour the data that makes it look like a space nebula. This is done by producing 3 images of the same position, but at varying iterations for each colour component. The example image at the start of the readme uses the RGB iterations values (2000, 200, 20). Finally, combine all the colour channels together in the same image.
 
+|![](https://github.com/mallocc/buddhabrot/blob/main/gamma.gif)|
+|:-:|
+| Gamma value from 0 to 5 |
+
 ## Rotation
 Effectively, the buddhabrot can be treated as a 4d object, and be rotated in such, to produce unintuitive and complex transformations. 
 
