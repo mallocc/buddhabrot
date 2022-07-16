@@ -24,7 +24,7 @@ I've added a shell script `test.sh` that will attempt to generate the anination 
 
 # Usage/Options
 
-We can added many options to the program to specify how we want the image to look:
+We can add many options to the program to specify how we want the image to look:
 
  - `-w | --width` - the width of the image (px)
  - `-h | --height` - the height of the image (px)
