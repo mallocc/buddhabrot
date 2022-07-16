@@ -120,7 +120,7 @@ The only thing that makes it slightly more complicated is the conversion of the 
 | Large amount of iterations used (100000) shows stable trajectories generating a lot of 'heat'. |
 
 ## Colouring
-The sqrt colouring method is commonly used with buddhabrot data. It is as simple as finding the highest value that occurs in the buddhabrot data, and then for each apply: `pixel[x + y * w] = sqrt(density[x + y * w]) / sqrt(maxDensity) * MAX_PIXEL_VALUE;`. Gamma correction can be used using: `pixel[x + y * w] = pow(density[x + y * w] / maxDensity, 1 / gamma) * MAX_PIXEL_VALUE;`.
+The sqrt colouring method is commonly used with buddhabrot data. It is as simple as finding the highest value that occurs in the buddhabrot data, and then for each apply: `pixel[x + y * w] = sqrt(density[x + y * w]) / sqrt(maxDensity) * MAX_PIXEL_VALUE;`. Gamma correction can be applied using: `pixel[x + y * w] = pow(density[x + y * w] / maxDensity, 1 / gamma) * MAX_PIXEL_VALUE;`.
 
 |![](https://github.com/mallocc/buddhabrot/blob/main/gamma.gif)|
 |:-:|
