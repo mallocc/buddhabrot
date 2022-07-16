@@ -115,6 +115,10 @@ for (int s = 0; s < samples; ++s)
 Notice that we are now not interating over the pixel positions, but randomly picking a starting position. We do this because we are trying to create a probability distribution of where trajectories fall. Using random samples helps us with this, because as the sample amount tends to infinity, the noise of the distribution falls to zero (like with any other distrubution).
 The only thing that makes it slightly more complicated is the conversion of the complex position back to screen space, but it's just a case rearranging the screen-to-complex forumla used in the Mandelbrot code.
 
+|![](https://github.com/mallocc/buddhabrot/blob/main/high_iterations.png)|
+|:-:|
+| Large amount of iterations used (100000) shows stable trajectories generating a lot of 'heat'. |
+
 ## Colouring
 The sqrt colouring method is commonly used with buddhabrot data. It is as simple as finding the highest value that occurs in the buddhabrot data, and then for each apply: `pixel[x + y * w] = sqrt(density[x + y * w]) / sqrt(maxDensity) * MAX_PIXEL_VALUE;`. Gamma correction can be used using: `pixel[x + y * w] = pow(density[x + y * w] / maxDensity, 1 / gamma) * MAX_PIXEL_VALUE;`.
 
@@ -124,7 +128,7 @@ There is a very nice way to colour the data that makes it look like a space nebu
 
 |![](https://github.com/mallocc/buddhabrot/blob/main/gamma.gif)|
 |:-:|
-| Gamma value from 0 to 5 |
+| Gamma value from 0 to 5. |
 
 ## Rotation
 Effectively, the buddhabrot can be treated as a 4d object, and be rotated in such, to produce unintuitive and complex transformations. 
@@ -145,7 +149,7 @@ where `p_` is the point of interstion we want to rotate around. Note this is mor
 
 |![](https://github.com/mallocc/buddhabrot/blob/main/rotation_cr.gif)|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_ci.gif)|![](https://github.com/mallocc/buddhabrot/blob/main/rotation_mandelbrot.gif)|
 |:-:|:-:|:-:|
-| Rotation about the axis of `c_re`, from 0 to 180 degrees | Rotation about the axis of `c_im`, from 0 to 180 degrees | Rotation on both axes of 90 degrees results in the Mandelbrot Set |
+| Rotation about the axis of `c_re`, from 0 to 180 degrees. | Rotation about the axis of `c_im`, from 0 to 180 degrees. | Rotation on both axes of 90 degrees results in the Mandelbrot Set. |
 
 
  
