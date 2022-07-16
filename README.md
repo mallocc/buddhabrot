@@ -122,13 +122,13 @@ The only thing that makes it slightly more complicated is the conversion of the 
 ## Colouring
 The sqrt colouring method is commonly used with buddhabrot data. It is as simple as finding the highest value that occurs in the buddhabrot data, and then for each apply: `pixel[x + y * w] = sqrt(density[x + y * w]) / sqrt(maxDensity) * MAX_PIXEL_VALUE;`. Gamma correction can be used using: `pixel[x + y * w] = pow(density[x + y * w] / maxDensity, 1 / gamma) * MAX_PIXEL_VALUE;`.
 
-The examples talked about are for greyscale, but can easily scaled to use 3 colour components.
-
-There is a very nice way to colour the data that makes it look like a space nebula. This is done by producing 3 images of the same position, but at varying iterations for each colour component. The example image at the start of the readme uses the RGB iterations values (2000, 200, 20). Finally, combine all the colour channels together in the same image.
-
 |![](https://github.com/mallocc/buddhabrot/blob/main/gamma.gif)|
 |:-:|
 | Gamma value from 0 to 5. |
+
+The examples talked about are for greyscale, but can easily scaled to use 3 colour components.
+
+There is a very nice way to colour the data that makes it look like a space nebula. This is done by producing 3 images of the same position, but at varying iterations for each colour component. The example image at the start of the readme uses the RGB iteration values (2000, 200, 20). Finally, combine all the colour channels together in the same image.
 
 ## Rotation
 Effectively, the buddhabrot can be treated as a 4d object, and be rotated in such, to produce unintuitive and complex transformations. 
