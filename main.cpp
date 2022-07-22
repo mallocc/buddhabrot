@@ -12,19 +12,19 @@
 #include "stb_image_write.h"
 
 // Delicious
-#define PI 3.1415926f
+#define PI 3.1415926
 
 /**
  *
  * Mersenne Twister random number generator.
  *
  */
-float randf(const float range = 1.0f, bool sign = false)
+double randf(const double range = 1.0, bool sign = false)
 {
 	std::random_device rd;
 	std::mt19937 gen(rd());
-	std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-	return dis(gen) * range * (1.0f + (float)sign) - range * sign;
+	std::uniform_real_distribution<double> dis(0.0, 1.0);
+	return dis(gen) * range * (1.0 + (double)sign) - range * sign;
 }
 
 /**
@@ -32,10 +32,10 @@ float randf(const float range = 1.0f, bool sign = false)
  */
 struct Complex
 {
-	float re, im;
+	double re, im;
 
-	Complex() : re(0.0f), im(0.0f) {}
-	Complex(float re, float im) : re(re), im(im) {}
+	Complex() : re(0.0), im(0.0) {}
+	Complex(double re, double im) : re(re), im(im) {}
 
 	Complex add(const Complex& a) { return Complex(re + a.re, im + a.im); }
 	Complex operator+(const Complex& a) { return add(a); }
@@ -45,10 +45,10 @@ struct Complex
 													re * a.im + im * a.re); }
 	Complex operator*(const Complex& a) { return mult(a); }
 
-	Complex operator/(float a) { return Complex(re / a, im / a); }
-	Complex operator*(float a) { return Complex(re * a, im * a); }
+	Complex operator/(double a) { return Complex(re / a, im / a); }
+	Complex operator*(double a) { return Complex(re * a, im * a); }
 
-	float mod2() { return re * re + im * im; }
+	double mod2() { return re * re + im * im; }
 
 	operator std::string() { return "(" + std::to_string(re) + ", "
 										+ std::to_string(im) + "i)"; }
@@ -66,11 +66,12 @@ struct BuddhabrotRenderer
 	{
 		Complex v0 = Complex(-2, -1.5);
 		Complex v1 = Complex(1, 1.5);
-		float alpha = 0;
-		float beta = 0;
-		float theta = 0;
+		double alpha = 0;
+		double beta = 0;
+		double theta = 0;
 		int steps = 1;
-		float gamma = 2;
+		double gamma = 2;
+		bool bezier = false;
 	};
 
 	BuddhabrotRenderer() {}
@@ -88,7 +89,7 @@ struct BuddhabrotRenderer
 	int iterationsR = 0;
 	int iterationsG = 0;
 	int iterationsB = 0;
-	float radius = 4.0f;
+	double radius = 4.0;
 	bool isAnti = false;
 	int escapeThreshold = 0;
 	int escapeThresholdR = 0;
@@ -133,8 +134,8 @@ struct BuddhabrotRenderer
 	// Processes a single frame with the provided properties
 	void processFrame(const Complex& v0, const Complex& v1, 
 					  const Complex& zr, const Complex& cr,
-					  const float alphaL, const float betaL, const float thetaL,
-					  const float gamma,
+					  const double alphaL, const double betaL, const double thetaL,
+					  const double gamma,
 					  const int step)
 	{
 		bool componentOverride = false;
@@ -193,19 +194,19 @@ struct BuddhabrotRenderer
 
 
 	// Linear interpolation
-	static float b1(float x0, float x1, float t)
+	static double b1(double x0, double x1, double t)
 	{
 		return x0 + (x1 - x0) * t;
 	}
 
 	// Quadratic interpolation
-	static float b2(float x0, float x1, float x2, float t)
+	static double b2(double x0, double x1, double x2, double t)
 	{
 		return pow(1 - t, 2) * x0 + 2 * (1 - t) * t * x1 + t * t * x2;
 	}
 
 	// Cubic interpolation
-	static float b3(float x0, float x1, float x2, float x3, float t)
+	static double b3(double x0, double x1, double x2, double x3, double t)
 	{
 		return pow(1 - t, 3) * x0 
 				+ 3 * t * pow(1 - t, 2) * x1 
@@ -246,18 +247,18 @@ struct BuddhabrotRenderer
 					LOG("Processing stage " << stage << " / " << stages.size() - 2 << ", step " << step << " / " << steps - 1 << "...");
 					clearAll();
 
-					float alphaL = stages[stage].alpha;
-					float betaL = stages[stage].beta;
-					float thetaL = stages[stage].theta;
+					double alphaL = stages[stage].alpha;
+					double betaL = stages[stage].beta;
+					double thetaL = stages[stage].theta;
 					Complex v0 = stages[stage].v0;
 					Complex v1 = stages[stage].v1;
-					float gamma = stages[stage].gamma;
+					double gamma = stages[stage].gamma;
 
 					if (stages.size() > 1)
 					{
-						float b = b3(0, 0, 1, 1, step / (float)steps); // ease in out
-						//float b = b3(0, 1, 1, 1, step / (float)steps); // ease in
-						//float b = b3(0, 1, 0, 1, step / (float)steps); // ease out
+						double b = stages[stage].bezier ? b3(0, 0, 1, 1, step / (double)steps) : (step / (double)steps); // ease in out
+						//double b = b3(0, 1, 1, 1, step / (double)steps); // ease in
+						//double b = b3(0, 1, 0, 1, step / (double)steps); // ease out
 						alphaL = (b * (stages[stage + 1].alpha - stages[stage].alpha) + stages[stage].alpha) / 180 * PI;
 						betaL = (b * (stages[stage + 1].beta - stages[stage].beta) + stages[stage].beta) / 180 * PI;
 						thetaL = (b * (stages[stage + 1].theta - stages[stage].theta) + stages[stage].theta) / 180 * PI;
@@ -280,11 +281,11 @@ struct BuddhabrotRenderer
 
 	// This is the main buddhabrot algorithm in one function
 	static void process(
-		int* data, int w, int h, int samples, int iter, int radius = 4.0f, 
+		int* data, int w, int h, int samples, int iter, int radius = 4.0, 
 		const Complex& minc = Complex(-2, -2), 
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
-		float alpha = 0, float beta = 0, float theta = 0, bool anti = false,
+		double alpha = 0, double beta = 0, double theta = 0, bool anti = false,
 		int threshold = 0, int floorIter = 0, int threadCount = 0)
 	{
 		// pre commpute //
@@ -296,11 +297,11 @@ struct BuddhabrotRenderer
 		Complex size = Complex(maxc) - minc;
 
 		// for use in the loop for converting back to screen space
-		float cw = w / (size.re);
-		float ch = h / (size.im);
+		double cw = w / (size.re);
+		double ch = h / (size.im);
 
 		// the center of the viewable complex plane
-		Complex center = size / 2.0f + minc;
+		Complex center = size / 2.0 + minc;
 
 		// find the OpenMP thread count
 		if (threadCount == 0) {
@@ -356,9 +357,9 @@ struct BuddhabrotRenderer
 						// now apply the rotation matrix on t and c (these are
 						// the points on the 4d volume)
 						t.re = t.re * cos(alpha + theta) 
-								+ c.im * sin(alpha + theta);
+								+ c.re * sin(alpha + theta);
 						t.im = t.im * cos(beta + theta) 
-								- c.re * sin(beta + theta);
+								- c.im * sin(beta + theta);
 						// translate back to our point of interest
 						t = t + center;
 
@@ -379,24 +380,24 @@ struct BuddhabrotRenderer
 			delete[] csamples;
 
 			//if (!(s % (samples / 10)))
-			//	LOG("Progress: " << std::setprecision(2) << (s / (float)samples) * 100.0f << "%...");
+			//	LOG("Progress: " << std::setprecision(2) << (s / (double)samples) * 100.0 << "%...");
 		}
 		LOG("Progress: finished!");
 	}
 
 	// classic sqrt colouring using gamma correction
 	// higher the gamma, the brighter it is
-	static uint8_t sqrtColour(float x, float y, float gamma)
+	static uint8_t sqrtColour(double x, double y, double gamma)
 	{
-		return pow(x / y, 1.0f / gamma) * UCHAR_MAX;
+		return pow(x / y, 1.0 / gamma) * UCHAR_MAX;
 	}
 
 	// normalises the buddhaData into pixelData
-	static void getPixelData(int w, int h, int c, int* buddhaData, uint8_t* pixelData, float gamma = 2.0f, int o = -1)
+	static void getPixelData(int w, int h, int c, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
 	{
-		float maxVal = 1;
+		double maxVal = 1;
 		for (int i = 0; i < w * h; ++i)
-			maxVal = std::max(maxVal, (float)buddhaData[i]);
+			maxVal = std::max(maxVal, (double)buddhaData[i]);
 
 		for (int i = 0; i < w * h; ++i)
 			for (int cc = 0; cc < c; ++cc)
@@ -517,6 +518,10 @@ int main(int argc, char* argv[])
 						checkAndSet([&](const std::string& in) { bb.escapeThresholdB = std::stoi(in); });
 					else if (option == "counter")
 						checkAndSet([&](const std::string& in) { bb.counter = std::stoi(in); });
+					else if (option == "bezier-enable")
+						stage.bezier = true;
+					else if (option == "bezier-disable")
+						stage.bezier = false;
 					else if (option == "next" || option == "next-stage" || option == "n")
 					{
 						bb.stages.push_back(stage);
