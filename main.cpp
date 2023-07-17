@@ -5,6 +5,8 @@
 #include <random>
 #include <stack>
 #include <functional>
+#include <filesystem>
+#include <map>
 
 #include "Log.h"
 
@@ -41,8 +43,10 @@ struct Complex
 	Complex operator+(const Complex& a) { return add(a); }
 	Complex sub(const Complex& a) { return Complex(re - a.re, im - a.im); }
 	Complex operator-(const Complex& a) { return sub(a); }
-	Complex mult(const Complex& a) { return Complex(re * a.re - im * a.im, 
-													re * a.im + im * a.re); }
+	Complex mult(const Complex& a) {
+		return Complex(re * a.re - im * a.im,
+			re * a.im + im * a.re);
+	}
 	Complex operator*(const Complex& a) { return mult(a); }
 
 	Complex operator/(double a) { return Complex(re / a, im / a); }
@@ -50,8 +54,10 @@ struct Complex
 
 	double mod2() { return re * re + im * im; }
 
-	operator std::string() { return "(" + std::to_string(re) + ", "
-										+ std::to_string(im) + "i)"; }
+	operator std::string() {
+		return "(" + std::to_string(re) + ", "
+			+ std::to_string(im) + "i)";
+	}
 };
 
 /**
@@ -97,6 +103,14 @@ struct BuddhabrotRenderer
 	int escapeThresholdB = 0;
 	int iterationsMin = 0;
 
+	int volumeAX = 0;
+	int volumeAY = 1;
+	int volumeAZ = 2;
+
+	int volumeBX = 0;
+	int volumeBY = 1;
+	int volumeBZ = 2;
+
 	Complex zr;
 	Complex cr;
 
@@ -108,9 +122,9 @@ struct BuddhabrotRenderer
 	// members that's value are derived from other.
 	void init()
 	{
-		components = ( iterationsR > 0 
-					|| iterationsG > 0 
-					|| iterationsB > 0) ? 3 : 1;
+		components = (iterationsR > 0
+			|| iterationsG > 0
+			|| iterationsB > 0) ? 3 : 1;
 
 		buddhaData = new int[width * height];
 		pixelData = new uint8_t[width * height * components];
@@ -132,23 +146,23 @@ struct BuddhabrotRenderer
 	}
 
 	// Processes a single frame with the provided properties
-	void processFrame(const Complex& v0, const Complex& v1, 
-					  const Complex& zr, const Complex& cr,
-					  const double alphaL, const double betaL, const double thetaL,
-					  const double gamma,
-					  const int step)
+	void processFrame(const Complex& v0, const Complex& v1,
+		const Complex& zr, const Complex& cr,
+		const double alphaL, const double betaL, const double thetaL,
+		const double gamma,
+		const int step)
 	{
 		bool componentOverride = false;
 
 		if (iterationsR > 0)
 		{
 			LOG("Processing red channel... ");
-			process(buddhaData, 
-				width, height, samples, iterationsR, radius, 
+			process(buddhaData,
+				width, height, samples, iterationsR, radius,
 				v0, v1, zr, cr,
-				alphaL, betaL, thetaL, 
+				alphaL, betaL, thetaL,
 				false, escapeThresholdR, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, 
+			getPixelData(width, height, components, buddhaData, pixelData,
 				gamma, 0);
 			clearBuddhaData();
 			componentOverride = true;
@@ -156,11 +170,11 @@ struct BuddhabrotRenderer
 		if (iterationsG > 0)
 		{
 			LOG("Processing green channel... ");
-			process(buddhaData, width, height, samples, iterationsG, radius, 
+			process(buddhaData, width, height, samples, iterationsG, radius,
 				v0, v1, zr, cr,
-				alphaL, betaL, thetaL, 
+				alphaL, betaL, thetaL,
 				false, escapeThresholdG, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, 
+			getPixelData(width, height, components, buddhaData, pixelData,
 				gamma, 1);
 			clearBuddhaData();
 			componentOverride = true;
@@ -168,11 +182,11 @@ struct BuddhabrotRenderer
 		if (iterationsB > 0)
 		{
 			LOG("Processing blue channel... ");
-			process(buddhaData, width, height, samples, iterationsB, radius, 
+			process(buddhaData, width, height, samples, iterationsB, radius,
 				v0, v1, zr, cr,
-				alphaL, betaL, thetaL, 
+				alphaL, betaL, thetaL,
 				false, escapeThresholdB, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, 
+			getPixelData(width, height, components, buddhaData, pixelData,
 				gamma, 2);
 			clearBuddhaData();
 			componentOverride = true;
@@ -180,11 +194,11 @@ struct BuddhabrotRenderer
 
 		if (!componentOverride)
 		{
-			process(buddhaData, width, height, samples, iterations, radius, 
+			process(buddhaData, width, height, samples, iterations, radius,
 				v0, v1, zr, cr,
-				alphaL, betaL, thetaL, 
+				alphaL, betaL, thetaL,
 				false, escapeThreshold, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData, 
+			getPixelData(width, height, components, buddhaData, pixelData,
 				gamma);
 		}
 
@@ -208,10 +222,10 @@ struct BuddhabrotRenderer
 	// Cubic interpolation
 	static double b3(double x0, double x1, double x2, double x3, double t)
 	{
-		return pow(1 - t, 3) * x0 
-				+ 3 * t * pow(1 - t, 2) * x1 
-				+ 3 * pow(t, 2) * (1 - t) * x2 
-				+ pow(t, 3) * x3;
+		return pow(1 - t, 3) * x0
+			+ 3 * t * pow(1 - t, 2) * x1
+			+ 3 * pow(t, 2) * (1 - t) * x2
+			+ pow(t, 3) * x3;
 	}
 
 	// Runs the renderer with the options specified
@@ -279,16 +293,45 @@ struct BuddhabrotRenderer
 		}
 	}
 
+	// map dimension name to index
+	std::map<std::string, int> dimensions = {
+		{"zr", 0},
+		{"zi", 1},
+		{"cr", 2},
+		{"ci", 3}
+	};
+
 	// This is the main buddhabrot algorithm in one function
-	static void process(
-		int* data, int w, int h, int samples, int iter, int radius = 4.0, 
-		const Complex& minc = Complex(-2, -2), 
+	void process(
+		int* data, int w, int h, int samples, int iter, int radius = 4.0,
+		const Complex& minc = Complex(-2, -2),
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
 		double alpha = 0, double beta = 0, double theta = 0, bool anti = false,
-		int threshold = 0, int floorIter = 0, int threadCount = 0)
+		int threshold = 0, int floorIter = 0, int threadCount = 0, bool cropSamples = false)
 	{
 		// pre commpute //
+
+		// Rotation matrix coefficients
+		double Axx, Axy, Axz, Ayy, Ayz, Azx, Azy, Azz;
+
+		// Calculate rotation matrix coefficients
+		double cosb = std::cos(alpha);
+		double sinb = std::sin(alpha);
+
+		double cosc = std::cos(beta);
+		double sinc = std::sin(beta);
+
+		Axx = cosb;
+		Axy = sinb * sinc;
+		Axz = sinb * cosc;
+
+		Ayy = cosc;
+		Ayz = -sinc;
+
+		Azx = -sinb;
+		Azy = cosb * sinc;
+		Azz = cosb * cosc;
 
 		// flag for if we are using the minimum threshold
 		bool escapeColouring = threshold > 0;
@@ -302,6 +345,8 @@ struct BuddhabrotRenderer
 
 		// the center of the viewable complex plane
 		Complex center = size / 2.0 + minc;
+
+		std::vector<double> coords = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 		// find the OpenMP thread count
 		if (threadCount == 0) {
@@ -319,7 +364,12 @@ struct BuddhabrotRenderer
 			Complex* csamples = new Complex[iter];
 
 			// initialise the mandelbrot components
-			Complex c(randf() * size.re + minc.re, randf() * size.im + minc.im);
+			Complex c;
+			if (cropSamples)
+				c = { randf() * size.re + minc.re, randf() * size.im + minc.im };
+			else
+				c = { randf() * 4.0f - 2.0f, randf() * 4.0f - 2.0f };
+
 			Complex z(c);
 
 			// track i
@@ -354,12 +404,35 @@ struct BuddhabrotRenderer
 						// if we want to rotate around a point, 
 						// we must translate the point to the origin first
 						t = t - center;
+
+						coords[0] = t.re;
+						coords[1] = t.im;
+						coords[2] = c.re;
+						coords[3] = c.im;
+
 						// now apply the rotation matrix on t and c (these are
 						// the points on the 4d volume)
-						t.re = t.re * cos(alpha + theta) 
-								+ c.re * sin(alpha + theta);
-						t.im = t.im * cos(beta + theta) 
-								- c.im * sin(beta + theta);
+						double x1 = coords[volumeAX];
+						double y1 = coords[volumeAY];
+						double z1 = coords[volumeAZ];
+						double x2 = coords[volumeBX];
+						double y2 = coords[volumeBY];
+						double z2 = coords[volumeBZ];
+
+						// Apply the rotation matrix on t
+						double nx = x1 + (x2 - x1) * alpha;
+						double ny = y1 + (y2 - y1) * beta;
+						double nz = z1 + (z2 - z1) * theta;
+
+						// Apply the rotation matrix coefficients
+						double newX = Axx * nx + Axy * ny + Axz * nz;
+						double newY = Ayy * ny + Ayz * nz;
+						double newZ = Azx * nx + Azy * ny + Azz * nz;
+
+						// Update the point coordinates
+						t.re = newX;
+						t.im = newY;
+
 						// translate back to our point of interest
 						t = t + center;
 
@@ -371,9 +444,9 @@ struct BuddhabrotRenderer
 						if (x >= 0 && x < w && y >= 0 && y < h)
 							// incr each pixels components according to the 
 							// colour thresholds
-							data[(y * w + x)] += escapeColouring 
-													? j >= threshold 
-													: j < iter;
+							data[(y * w + x)] += escapeColouring
+							? j >= threshold
+							: j < iter;
 					}
 
 			// clean up the potential iteration samples for this sample
@@ -405,6 +478,24 @@ struct BuddhabrotRenderer
 					pixelData[i * c + cc] = sqrtColour(buddhaData[i], maxVal, gamma);
 	}
 
+	static bool createDirectories(const std::string& filepath) {
+		std::filesystem::path path(filepath);
+
+		// Extract the directory path
+		std::filesystem::path directory = path.parent_path();
+
+		// Create directories recursively
+		try {
+			std::filesystem::create_directories(directory);
+		}
+		catch (const std::filesystem::filesystem_error& e) {
+			std::cerr << "Error creating directories: " << e.what() << std::endl;
+			return false;
+		}
+
+		return true;
+	}
+
 	// writes pixelData out to a PNG using stb_image_write.h
 	static void writeToPNG(const std::string& filename, int w, int h, int c, uint8_t* data)
 	{
@@ -419,6 +510,7 @@ struct BuddhabrotRenderer
 			ss << "img_" << time << ".png";
 		else
 			ss << filename << ".png";
+		createDirectories(ss.str().c_str());
 		stbi_write_png(ss.str().c_str(), w, h, c, data, w * c);
 	}
 
@@ -470,10 +562,48 @@ int main(int argc, char* argv[])
 						}
 					};
 
+					auto checkAndSetAndReturn = [&](std::function<int(const std::string&)> callback)
+					{
+						if (!args.empty())
+						{
+							success = callback(args.top());
+							LOG("Invalid option value supplied: " << args.top());
+							args.pop();
+						}
+						else
+						{
+							LOG("No option value supplied: " << arg);
+							success = false;
+						}
+					};
+
+					auto checkSetVolumeVals = [&](int& val)
+					{
+						checkAndSetAndReturn([&](const std::string& in) -> bool
+							{
+								if (!bb.dimensions.contains(in))
+									return false;
+								val = bb.dimensions[in];
+								return true;
+							});
+					};
+
 					if (option == "w" || option == "width")
 						checkAndSet([&](const std::string& in) { bb.width = std::stoi(in); });
 					else if (option == "h" || option == "height")
 						checkAndSet([&](const std::string& in) { bb.height = std::stoi(in); });
+					else if (option == "vax" || option == "volume-a-x")
+						checkSetVolumeVals(bb.volumeAX);
+					else if (option == "vay" || option == "volume-a-y")
+						checkSetVolumeVals(bb.volumeAY);
+					else if (option == "vaz" || option == "volume-a-z")
+						checkSetVolumeVals(bb.volumeAZ);
+					else if (option == "vbx" || option == "volume-b-x")
+						checkSetVolumeVals(bb.volumeBX);
+					else if (option == "vby" || option == "volume-b-y")
+						checkSetVolumeVals(bb.volumeBY);
+					else if (option == "vbz" || option == "volume-b-z")
+						checkSetVolumeVals(bb.volumeBZ);
 					else if (option == "i" || option == "iterations")
 						checkAndSet([&](const std::string& in) { bb.iterations = std::stoi(in); });
 					else if (option == "ir" || option == "iterations-red")
