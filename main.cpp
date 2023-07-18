@@ -24,7 +24,7 @@
 double randf(const double range = 1.0, bool sign = false)
 {
 	std::random_device rd;
-	std::mt19937 gen(rd());
+	std::mt19937_64 gen(rd());
 	std::uniform_real_distribution<double> dis(0.0, 1.0);
 	return dis(gen) * range * (1.0 + (double)sign) - range * sign;
 }
@@ -90,7 +90,7 @@ struct BuddhabrotRenderer
 	int width = 0;
 	int height = 0;
 	int components = 1;
-	int samples = 0;
+	float samples = 0;
 	int iterations = 0;
 	int iterationsR = 0;
 	int iterationsG = 0;
@@ -102,6 +102,10 @@ struct BuddhabrotRenderer
 	int escapeThresholdG = 0;
 	int escapeThresholdB = 0;
 	int iterationsMin = 0;
+
+	int superSampleFactor = 1;
+
+	bool useRandomGeneration = false;
 
 	int volumeAX = 0;
 	int volumeAY = 1;
@@ -126,14 +130,14 @@ struct BuddhabrotRenderer
 			|| iterationsG > 0
 			|| iterationsB > 0) ? 3 : 1;
 
-		buddhaData = new int[width * height];
+		buddhaData = new int[width * height * superSampleFactor * superSampleFactor];
 		pixelData = new uint8_t[width * height * components];
 	}
 
 	// Zeros all of the buddhaData array
 	void clearBuddhaData()
 	{
-		for (int i = 0; i < width * height; ++i)
+		for (int i = 0; i < width * height * superSampleFactor * superSampleFactor; ++i)
 			buddhaData[i] = 0;
 	}
 
@@ -158,11 +162,11 @@ struct BuddhabrotRenderer
 		{
 			LOG("Processing red channel... ");
 			process(buddhaData,
-				width, height, samples, iterationsR, radius,
+				width * superSampleFactor, height * superSampleFactor, samples, iterationsR, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
 				false, escapeThresholdR, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData,
+			getPixelData(width, height, components, superSampleFactor, buddhaData, pixelData,
 				gamma, 0);
 			clearBuddhaData();
 			componentOverride = true;
@@ -170,11 +174,11 @@ struct BuddhabrotRenderer
 		if (iterationsG > 0)
 		{
 			LOG("Processing green channel... ");
-			process(buddhaData, width, height, samples, iterationsG, radius,
+			process(buddhaData, width * superSampleFactor, height * superSampleFactor, samples, iterationsG, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
 				false, escapeThresholdG, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData,
+			getPixelData(width, height, components, superSampleFactor, buddhaData, pixelData,
 				gamma, 1);
 			clearBuddhaData();
 			componentOverride = true;
@@ -182,11 +186,11 @@ struct BuddhabrotRenderer
 		if (iterationsB > 0)
 		{
 			LOG("Processing blue channel... ");
-			process(buddhaData, width, height, samples, iterationsB, radius,
+			process(buddhaData, width * superSampleFactor, height * superSampleFactor, samples, iterationsB, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
 				false, escapeThresholdB, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData,
+			getPixelData(width, height, components, superSampleFactor, buddhaData, pixelData,
 				gamma, 2);
 			clearBuddhaData();
 			componentOverride = true;
@@ -194,11 +198,11 @@ struct BuddhabrotRenderer
 
 		if (!componentOverride)
 		{
-			process(buddhaData, width, height, samples, iterations, radius,
+			process(buddhaData, width * superSampleFactor, height * superSampleFactor, samples, iterations, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
 				false, escapeThreshold, iterationsMin);
-			getPixelData(width, height, components, buddhaData, pixelData,
+			getPixelData(width, height, components, superSampleFactor, buddhaData, pixelData,
 				gamma);
 		}
 
@@ -303,12 +307,12 @@ struct BuddhabrotRenderer
 
 	// This is the main buddhabrot algorithm in one function
 	void process(
-		int* data, int w, int h, int samples, int iter, int radius = 4.0,
+		int* data, int w, int h, float samples, int iter, int radius = 4.0,
 		const Complex& minc = Complex(-2, -2),
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
 		double alpha = 0, double beta = 0, double theta = 0, bool anti = false,
-		int threshold = 0, int floorIter = 0, int threadCount = 0, bool cropSamples = false)
+		int threshold = 0, int floorIter = 0, int threadCount = 0, bool cropSamples = true)
 	{
 		// pre commpute //
 
@@ -356,16 +360,24 @@ struct BuddhabrotRenderer
 			};
 		}
 
-		// leave a core for the rest of the OS
-#pragma omp parallel for num_threads(std::max(1, threadCount - 1))
-		for (int s = 0; s < samples; ++s)
-		{
+		float incw = size.re /** (1.0f + randf(0.01, true)) */ / (float)(w * samples); // Width of each sample
+		float inch = size.im /** (1.0f + randf(0.01, true))*/ / (float)(h * samples); // Height of each sample
+
+		int wsamples = w * samples;
+		int hsamples = h * samples;
+
+		auto trajectory = [&](int ax = 0, int ay = 0) {
 			// pre allocate potential iteration samples
 			Complex* csamples = new Complex[iter];
 
 			// initialise the mandelbrot components
 			Complex c;
-			if (cropSamples)
+			if (!useRandomGeneration)
+			{
+				c = Complex(ax * incw, ay * inch);
+				c = c + minc;
+			}
+			else if (cropSamples)
 				c = { randf() * size.re + minc.re, randf() * size.im + minc.im };
 			else
 				c = { randf() * 4.0f - 2.0f, randf() * 4.0f - 2.0f };
@@ -454,7 +466,19 @@ struct BuddhabrotRenderer
 
 			//if (!(s % (samples / 10)))
 			//	LOG("Progress: " << std::setprecision(2) << (s / (double)samples) * 100.0 << "%...");
-		}
+		};
+
+		// leave a core for the rest of the OS
+		if (useRandomGeneration)
+#pragma omp parallel for num_threads(std::max(1, threadCount - 1))
+			for (int s = 0; s < (int)samples; ++s)
+				trajectory();
+		else
+#pragma omp parallel for num_threads(std::max(1, threadCount - 1))
+			for (int px = 0; px < wsamples; ++px)
+				for (int py = 0; py < hsamples; ++py)
+					trajectory(px, py);
+
 		LOG("Progress: finished!");
 	}
 
@@ -465,8 +489,107 @@ struct BuddhabrotRenderer
 		return pow(x / y, 1.0 / gamma) * UCHAR_MAX;
 	}
 
+	static double smoothstep(double x, double minVal, double maxVal)
+	{
+		// Ensure x is within the range [minVal, maxVal]
+		x = std::clamp((x - minVal) / (maxVal - minVal), 0.0, 1.0);
+
+		// Apply the smoothstep interpolation formula
+		return x * x * (3 - 2 * x);
+	}
+
+	// Apply box blur to a 2D array
+	static void boxBlur2D(int w, int h, int superSampleFactor, int* input, float* output, int radius)
+	{
+		int kernelSize = 2 * radius + 1;
+		std::vector<int> kernel(kernelSize, 1);
+
+		// Blur horizontally
+		for (int y = 0; y < h * superSampleFactor; ++y)
+		{
+			for (int x = 0; x < w * superSampleFactor; ++x)
+			{
+				int sum = 0;
+				for (int i = -radius; i <= radius; ++i)
+				{
+					int px = x + i;
+					if (px < 0) px = 0;
+					if (px >= w * superSampleFactor) px = w * superSampleFactor - 1;
+
+					sum += input[y * w * superSampleFactor + px];
+				}
+				output[y * w * superSampleFactor + x] = sum / (float)kernelSize;
+			}
+		}
+
+		// Blur vertically
+		for (int y = 0; y < h * superSampleFactor; ++y)
+		{
+			for (int x = 0; x < w * superSampleFactor; ++x)
+			{
+				int sum = 0;
+				for (int i = -radius; i <= radius; ++i)
+				{
+					int py = y + i;
+					if (py < 0) py = 0;
+					if (py >= h * superSampleFactor) py = h * superSampleFactor - 1;
+
+					sum += input[py * w * superSampleFactor + x];
+				}
+				output[y * w * superSampleFactor + x] = sum / (float)kernelSize;
+			}
+		}
+	}
+
+	// Normalizes the buddhaData into pixelData with supersampling and box blur
+	static void getPixelData(int w, int h, int c, int superSampleFactor, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
+	{
+		int supersampledW = w * superSampleFactor;
+		int supersampledH = h * superSampleFactor;
+
+		// Create a temporary buffer for supersampled data
+		std::vector<float> supersampledBuddhaData(supersampledW * supersampledH);
+
+		// Apply box blur to the supersampled buddhaData
+		boxBlur2D(w, h, superSampleFactor, buddhaData, supersampledBuddhaData.data(), 1);
+
+		// Calculate maximum value in the supersampled image
+		// Find the minimum and maximum values
+		float minValue = *std::min_element(supersampledBuddhaData.data(), supersampledBuddhaData.data() + supersampledBuddhaData.size());
+		float maxValue = *std::max_element(supersampledBuddhaData.data(), supersampledBuddhaData.data() + supersampledBuddhaData.size());
+		// Subtract the minimum value and divide by the range
+		float range = maxValue - minValue;
+
+		// Downscale the supersampled buddhaData to pixelData
+		for (int y = 0; y < h; ++y)
+		{
+			for (int x = 0; x < w; ++x)
+			{
+				double averagedValue = 0.0;
+				for (int sy = 0; sy < superSampleFactor; ++sy)
+				{
+					for (int sx = 0; sx < superSampleFactor; ++sx)
+					{
+						int ssx = x * superSampleFactor + sx;
+						int ssy = y * superSampleFactor + sy;
+						averagedValue += supersampledBuddhaData[ssy * supersampledW + ssx];
+					}
+				}
+				averagedValue /= (float)(superSampleFactor * superSampleFactor);
+
+				for (int cc = 0; cc < c; ++cc)
+				{
+					if (o == -1 || o == cc)
+					{
+						pixelData[(y * w + x) * c + cc] = pow(smoothstep((averagedValue - minValue) / range, 0.0, 1.0f), 1.0 / gamma) * UCHAR_MAX;
+					}
+				}
+			}
+		}
+	}
+
 	// normalises the buddhaData into pixelData
-	static void getPixelData(int w, int h, int c, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
+	static void getPixelData2(int w, int h, int c, int superSampleFactor, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
 	{
 		double maxVal = 1;
 		for (int i = 0; i < w * h; ++i)
@@ -604,6 +727,8 @@ int main(int argc, char* argv[])
 						checkSetVolumeVals(bb.volumeBY);
 					else if (option == "vbz" || option == "volume-b-z")
 						checkSetVolumeVals(bb.volumeBZ);
+					else if (option == "super-sample-factor")
+						checkAndSet([&](const std::string& in) { bb.superSampleFactor = std::stoi(in); });
 					else if (option == "i" || option == "iterations")
 						checkAndSet([&](const std::string& in) { bb.iterations = std::stoi(in); });
 					else if (option == "ir" || option == "iterations-red")
@@ -627,7 +752,7 @@ int main(int argc, char* argv[])
 					else if (option == "im1" || option == "y1" || option == "imaginary1")
 						checkAndSet([&](const std::string& in) { stage.v1.im = std::stof(in); });
 					else if (option == "s" || option == "samples")
-						checkAndSet([&](const std::string& in) { bb.samples = std::stoi(in); });
+						checkAndSet([&](const std::string& in) { bb.samples = std::stof(in); });
 					else if (option == "o" || option == "output")
 						checkAndSet([&](const std::string& in) { bb.filename = in; });
 					else if (option == "steps")
@@ -652,6 +777,10 @@ int main(int argc, char* argv[])
 						stage.bezier = true;
 					else if (option == "bezier-disable")
 						stage.bezier = false;
+					else if (option == "random-enable")
+						bb.useRandomGeneration = true;
+					else if (option == "random-disable")
+						bb.useRandomGeneration = false;
 					else if (option == "next" || option == "next-stage" || option == "n")
 					{
 						bb.stages.push_back(stage);
