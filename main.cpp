@@ -7,6 +7,7 @@
 #include <functional>
 #include <filesystem>
 #include <map>
+#include <chrono>
 
 #include "Log.h"
 
@@ -27,6 +28,95 @@ double randf(const double range = 1.0, bool sign = false)
 	std::mt19937_64 gen(rd());
 	std::uniform_real_distribution<double> dis(0.0, 1.0);
 	return dis(gen) * range * (1.0 + (double)sign) - range * sign;
+}
+
+template<class T>
+class Timer {
+public:
+	Timer() : totalDuration(0), numSamples(0) {}
+
+	void start() {
+		startTime = std::chrono::high_resolution_clock::now();
+	}
+
+	void stop() {
+		auto endTime = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<T>(endTime - startTime).count();
+
+		totalDuration.fetch_add(duration);
+		numSamples.fetch_add(1);
+	}
+
+	double getAverageTime() const {
+		if (numSamples == 0) {
+			return 0.0;
+		}
+		return static_cast<double>(totalDuration) / numSamples;
+	}
+
+	double getRemainingTime(int totalIterations, int completedIterations) const {
+		int remainingIterations = totalIterations - completedIterations;
+		if (remainingIterations <= 0) {
+			return 0.0;
+		}
+		double averageTime = getAverageTime();
+		return averageTime * remainingIterations;
+	}
+
+private:
+	std::chrono::high_resolution_clock::time_point startTime;
+	std::atomic<long long> totalDuration;
+	std::atomic<int> numSamples;
+};
+
+template<class T>
+std::string getTimeUnit() {
+	if (std::is_same<T, std::chrono::nanoseconds>::value) {
+		return "ns";
+	}
+	else if (std::is_same<T, std::chrono::microseconds>::value) {
+		return "us";
+	}
+	else if (std::is_same<T, std::chrono::milliseconds>::value) {
+		return "ms";
+	}
+	else if (std::is_same<T, std::chrono::seconds>::value) {
+		return "s";
+	}
+	else if (std::is_same<T, std::chrono::minutes>::value) {
+		return "min";
+	}
+	else if (std::is_same<T, std::chrono::hours>::value) {
+		return "hr";
+	}
+	else {
+		return "Unknown";
+	}
+}
+
+template<class T>
+double convertToSeconds(double duration) {
+	if (std::is_same<T, std::chrono::nanoseconds>::value) {
+		return duration / 1e9;
+	}
+	else if (std::is_same<T, std::chrono::microseconds>::value) {
+		return duration / 1e6;
+	}
+	else if (std::is_same<T, std::chrono::milliseconds>::value) {
+		return duration / 1e3;
+	}
+	else if (std::is_same<T, std::chrono::seconds>::value) {
+		return duration;
+	}
+	else if (std::is_same<T, std::chrono::minutes>::value) {
+		return duration * 60;
+	}
+	else if (std::is_same<T, std::chrono::hours>::value) {
+		return duration * 3600;
+	}
+	else {
+		return 0.0;
+	}
 }
 
 /**
@@ -105,6 +195,8 @@ struct BuddhabrotRenderer
 
 	int superSampleFactor = 1;
 
+	bool cropSamples = true;
+
 	bool useRandomGeneration = false;
 
 	int volumeAX = 0;
@@ -121,6 +213,26 @@ struct BuddhabrotRenderer
 	int counter = 0;
 
 	std::vector<Stage> stages;
+
+	Timer<std::chrono::milliseconds> timer;
+
+	float bmTime = 0.0f;
+
+	float benchmark()
+	{
+		const int numIterations = 1000000; // Adjust the number of iterations as desired
+
+		Timer<std::chrono::nanoseconds> timer;
+		timer.start();
+		double randomValue = 0.0f;
+		for (int i = 0; i < numIterations; ++i)
+		{
+			randomValue *= randf(1.0, true);
+			// Do something with the random value if necessary
+		}
+		timer.stop();
+		return 7.0f * timer.getAverageTime() / numIterations;
+	}
 
 	// This should initialise the data arrays and another 
 	// members that's value are derived from other.
@@ -237,6 +349,8 @@ struct BuddhabrotRenderer
 	{
 		init();
 
+		bmTime = benchmark();
+
 		LOG(
 			"Render details:" << std::endl
 			<< "\t " << width << "x" << height << std::endl
@@ -254,7 +368,12 @@ struct BuddhabrotRenderer
 			<< "\t theta = " << stages[0].theta << std::endl
 			<< "\t escaping-trajectories = " << escapeThreshold << std::endl
 			<< "\t stages = " << stages.size() << std::endl
+			<< "\t bmTime = " << bmTime << std::endl
 		);
+
+		int totalSteps = 0;
+		for (int stage = 0; stage < stages.size() - 1; ++stage)
+			totalSteps += stages[stage].steps;
 
 		if (stages.size() > 1)
 		{
@@ -287,7 +406,12 @@ struct BuddhabrotRenderer
 						v1.im = (b * (stages[stage + 1].v1.im - stages[stage].v1.im) + stages[stage].v1.im);
 					}
 
+					timer.start();
+
 					processFrame(v0, v1, zr, cr, alphaL, betaL, thetaL, gamma, stepC + counter);
+
+					timer.stop();
+					LOG("Average time: " << timer.getAverageTime() / 1000.0f << "s, estimated time left: " << (totalSteps - stepC) * timer.getAverageTime() / 1000.0f << "s");
 				}
 		}
 		else if (!stages.empty())
@@ -312,7 +436,7 @@ struct BuddhabrotRenderer
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
 		double alpha = 0, double beta = 0, double theta = 0, bool anti = false,
-		int threshold = 0, int floorIter = 0, int threadCount = 0, bool cropSamples = true)
+		int threshold = 0, int floorIter = 0, int threadCount = 0)
 	{
 		// pre commpute //
 
@@ -360,13 +484,16 @@ struct BuddhabrotRenderer
 			};
 		}
 
-		float incw = size.re /** (1.0f + randf(0.01, true)) */ / (float)(w * samples); // Width of each sample
-		float inch = size.im /** (1.0f + randf(0.01, true))*/ / (float)(h * samples); // Height of each sample
+		float incw = size.re / (float)(w * samples); // Width of each sample
+		float inch = size.im / (float)(h * samples); // Height of each sample
+
+		float incwF = 4.0f / (float)(w * samples); // Width of each sample 
+		float inchF = 4.0f / (float)(h * samples); // Height of each sample
 
 		int wsamples = w * samples;
 		int hsamples = h * samples;
 
-		auto trajectory = [&](int ax = 0, int ay = 0) {
+		auto trajectory = [&](int s, int ax = 0, int ay = 0) {
 			// pre allocate potential iteration samples
 			Complex* csamples = new Complex[iter];
 
@@ -374,7 +501,11 @@ struct BuddhabrotRenderer
 			Complex c;
 			if (!useRandomGeneration)
 			{
-				c = Complex(ax * incw, ay * inch);
+				s = ay * wsamples + ax;
+				if (cropSamples)
+					c = Complex(ax * incw, ay * inch);
+				else
+					c = Complex(ax * incwF, ay * inchF);
 				c = c + minc;
 			}
 			else if (cropSamples)
@@ -466,18 +597,52 @@ struct BuddhabrotRenderer
 
 			//if (!(s % (samples / 10)))
 			//	LOG("Progress: " << std::setprecision(2) << (s / (double)samples) * 100.0 << "%...");
+
 		};
+
+
+		Timer<std::chrono::nanoseconds> ttimer;
+		std::string timeUnit = getTimeUnit<std::chrono::nanoseconds>();
+		const int printInterval = 1000000; // Adjust the interval as desired
+
+		int sampleCount = 0; // Atomic counter to keep track of the sample number
 
 		// leave a core for the rest of the OS
 		if (useRandomGeneration)
 #pragma omp parallel for num_threads(std::max(1, threadCount - 1))
 			for (int s = 0; s < (int)samples; ++s)
-				trajectory();
+			{
+				trajectory(s);
+#pragma omp atomic
+				sampleCount++;
+
+				if (sampleCount % printInterval == 0)
+				{
+					// Print the sample count
+#pragma omp critical
+					{
+						std::cout << "Time left: " << convertToSeconds<std::chrono::nanoseconds>(bmTime * (samples - sampleCount)) << "s" << std::endl;
+					}
+				}
+			}
 		else
 #pragma omp parallel for num_threads(std::max(1, threadCount - 1))
 			for (int px = 0; px < wsamples; ++px)
 				for (int py = 0; py < hsamples; ++py)
-					trajectory(px, py);
+				{
+					trajectory(0, px, py);
+#pragma omp atomic
+					sampleCount++;
+
+					if (sampleCount % printInterval == 0)
+					{
+						// Print the sample count
+#pragma omp critical
+						{
+							std::cout << "Time left: " << convertToSeconds<std::chrono::nanoseconds>(bmTime * (wsamples * hsamples - sampleCount)) << "s" << std::endl;
+						}
+					}
+				}
 
 		LOG("Progress: finished!");
 	}
@@ -781,6 +946,10 @@ int main(int argc, char* argv[])
 						bb.useRandomGeneration = true;
 					else if (option == "random-disable")
 						bb.useRandomGeneration = false;
+					else if (option == "crop-samples-enable")
+						bb.cropSamples = true;
+					else if (option == "crop-samples-disable")
+						bb.cropSamples = false;
 					else if (option == "next" || option == "next-stage" || option == "n")
 					{
 						bb.stages.push_back(stage);
