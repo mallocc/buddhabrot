@@ -22,12 +22,20 @@
  * Mersenne Twister random number generator.
  *
  */
-double randf(const double range = 1.0, bool sign = false)
+ //double randf(const double range = 1.0, bool sign = false)
+ //{
+ //	std::random_device rd;
+ //	std::mt19937_64 gen(rd());
+ //	std::uniform_real_distribution<double> dis(0.0, 1.0);
+ //	return dis(gen) * range * (1.0 + (double)sign) - range * sign;
+ //}
+
+double randf(const double minimum = 0.0, const double maximum = 1.0)
 {
 	std::random_device rd;
 	std::mt19937_64 gen(rd());
 	std::uniform_real_distribution<double> dis(0.0, 1.0);
-	return dis(gen) * range * (1.0 + (double)sign) - range * sign;
+	return dis(gen) * (maximum - minimum) + minimum;
 }
 
 template<class T>
@@ -117,6 +125,35 @@ double convertToSeconds(double duration) {
 	else {
 		return 0.0;
 	}
+}
+
+std::string secondsToHHMMSS(double duration) {
+	std::chrono::seconds totalSeconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::duration<double>(duration));
+	int hours = totalSeconds.count() / 3600;
+	int minutes = (totalSeconds.count() % 3600) / 60;
+	int seconds = totalSeconds.count() % 60;
+
+	std::ostringstream oss;
+	oss << std::setw(2) << std::setfill('0') << hours << ":";
+	oss << std::setw(2) << std::setfill('0') << minutes << ":";
+	oss << std::setw(2) << std::setfill('0') << seconds;
+
+	return oss.str();
+}
+
+template<class T>
+std::string formatDurationToHHMMSS(T& duration) {
+	std::chrono::seconds totalSeconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+	int hours = totalSeconds.count() / 3600;
+	int minutes = (totalSeconds.count() % 3600) / 60;
+	int seconds = totalSeconds.count() % 60;
+
+	std::ostringstream oss;
+	oss << std::setw(2) << std::setfill('0') << hours << ":";
+	oss << std::setw(2) << std::setfill('0') << minutes << ":";
+	oss << std::setw(2) << std::setfill('0') << seconds;
+
+	return oss.str();
 }
 
 /**
@@ -216,6 +253,13 @@ struct BuddhabrotRenderer
 
 	Timer<std::chrono::milliseconds> timer;
 
+	int currentStep = 0;
+	int currentStage = 0;
+	int stepsLeft = 0;
+	int totalSteps = 0;
+
+	int currentSamples = 0;
+
 	float bmTime = 0.0f;
 
 	float benchmark()
@@ -272,7 +316,7 @@ struct BuddhabrotRenderer
 
 		if (iterationsR > 0)
 		{
-			LOG("Processing red channel... ");
+			print("Processing red channel... ");
 			process(buddhaData,
 				width * superSampleFactor, height * superSampleFactor, samples, iterationsR, radius,
 				v0, v1, zr, cr,
@@ -285,7 +329,7 @@ struct BuddhabrotRenderer
 		}
 		if (iterationsG > 0)
 		{
-			LOG("Processing green channel... ");
+			print("Processing green channel... ");
 			process(buddhaData, width * superSampleFactor, height * superSampleFactor, samples, iterationsG, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
@@ -297,7 +341,7 @@ struct BuddhabrotRenderer
 		}
 		if (iterationsB > 0)
 		{
-			LOG("Processing blue channel... ");
+			print("Processing blue channel... ");
 			process(buddhaData, width * superSampleFactor, height * superSampleFactor, samples, iterationsB, radius,
 				v0, v1, zr, cr,
 				alphaL, betaL, thetaL,
@@ -344,6 +388,71 @@ struct BuddhabrotRenderer
 			+ pow(t, 3) * x3;
 	}
 
+	void clearLastLines(int n) {
+		for (int i = 0; i < n; i++) {
+			std::cout << "\033[2K";  // Clear the current line
+			std::cout << "\033[A";   // Move the cursor up
+		}
+	}
+
+	int countLinesInStringStream(std::stringstream& ss) {
+		std::string line;
+		int lineCount = 0;
+
+		// Save the current position in the stream
+		std::streampos originalPos = ss.tellg();
+
+		// Count the lines by reading the stream line by line
+		while (std::getline(ss, line)) {
+			lineCount++;
+		}
+
+		// Restore the original position in the stream
+		ss.clear();
+		ss.seekg(originalPos);
+
+		return lineCount;
+	}
+
+
+	const std::string& drawProgressBar(float progress) {
+		int barWidth = 30;
+		int pos = static_cast<int>(barWidth * progress);
+
+		std::stringstream ss;
+		ss << "[";
+		for (int i = 0; i < barWidth; ++i) {
+			if (i < pos)
+				ss << "=";
+			else if (i == pos)
+				ss << ">";
+			else
+				ss << " ";
+		}
+		ss << "] " << static_cast<int>(std::round(progress * 100.0f)) << "%";
+		return ss.str();
+	}
+
+	std::string lastMessage;
+
+	void print(const std::string& str)
+	{
+		std::string totalProgress = drawProgressBar(1 - stepsLeft / (float)totalSteps);
+		std::string frameProgress = drawProgressBar(currentSamples / (float)(useRandomGeneration ? samples : width * height * samples * samples));
+		std::stringstream ss;
+		ss << "\n\t       Average time: " << timer.getAverageTime() / 1000.0f << "s"
+			<< "\n\tEstimated time left: " << secondsToHHMMSS(stepsLeft * timer.getAverageTime() / 1000.0f)
+			<< (stages.size() > 1 ? std::format("\n\t         Processing: STAGE {} / {},\tSTEP {} / {}", currentStage, stages.size() - 2, currentStep, stages[currentStage].steps) : "")
+			<< "\n\t          Currently: " << (str.empty() ? lastMessage : str)
+			<< "\n\t     Current Sample: " << currentSamples
+			<< "\n\t     Frame Progress:" << frameProgress
+			<< "\n\t     Total Progress:" << (stages.size() == 1 ? frameProgress : totalProgress);
+		clearLastLines(countLinesInStringStream(ss));
+		std::cout << ss.str() << std::endl;
+		if (!str.empty())
+			lastMessage = str;
+	}
+
 	// Runs the renderer with the options specified
 	void run()
 	{
@@ -371,7 +480,8 @@ struct BuddhabrotRenderer
 			<< "\t bmTime = " << bmTime << std::endl
 		);
 
-		int totalSteps = 0;
+		std::cout << "\n\n\n\n\n\n\n";
+
 		for (int stage = 0; stage < stages.size() - 1; ++stage)
 			totalSteps += stages[stage].steps;
 
@@ -381,7 +491,9 @@ struct BuddhabrotRenderer
 			for (int stage = 0; stage < stages.size() - 1; ++stage)
 				for (int step = 0, steps = stages[stage].steps; step < steps; ++step, ++stepC)
 				{
-					LOG("Processing stage " << stage << " / " << stages.size() - 2 << ", step " << step << " / " << steps - 1 << "...");
+					currentStage = stage;
+					currentStep = step;
+					//print(std::format("Processing stage {} / {}, step {} / {}...", stage, stages.size() - 2, step, steps - 1));
 					clearAll();
 
 					double alphaL = stages[stage].alpha;
@@ -394,6 +506,7 @@ struct BuddhabrotRenderer
 					if (stages.size() > 1)
 					{
 						double b = stages[stage].bezier ? b3(0, 0, 1, 1, step / (double)steps) : (step / (double)steps); // ease in out
+						b = stages[stage].bezier ? smootherstep(step / (double)steps, 0., 1.) : (step / (double)steps);
 						//double b = b3(0, 1, 1, 1, step / (double)steps); // ease in
 						//double b = b3(0, 1, 0, 1, step / (double)steps); // ease out
 						alphaL = (b * (stages[stage + 1].alpha - stages[stage].alpha) + stages[stage].alpha) / 180 * PI;
@@ -411,7 +524,8 @@ struct BuddhabrotRenderer
 					processFrame(v0, v1, zr, cr, alphaL, betaL, thetaL, gamma, stepC + counter);
 
 					timer.stop();
-					LOG("Average time: " << timer.getAverageTime() / 1000.0f << "s, estimated time left: " << (totalSteps - stepC) * timer.getAverageTime() / 1000.0f << "s");
+
+					stepsLeft = (totalSteps - stepC);
 				}
 		}
 		else if (!stages.empty())
@@ -428,6 +542,51 @@ struct BuddhabrotRenderer
 		{"cr", 2},
 		{"ci", 3}
 	};
+
+	Complex mutate(Complex& c, Complex& size, const Complex& minc, const Complex& maxc)
+	{
+		if (randf(0., 5.) < 4)
+		{
+			Complex n = c;
+
+			double zoom = 4.0f / size.re;
+
+			double r1 = (1.f / zoom) * 0.000001;
+			double r2 = (1.f / zoom) * 0.01;
+			double phi = randf(0., 1.) * 2.f * 3.1415926f;
+			double r = r2 * exp(-std::log(r2 / r1) * randf(0., 1.));
+
+			n.re += r * cos(phi);
+			n.im += r * sin(phi);
+
+			return n;
+		}
+		else
+		{
+			Complex n = c;
+			;
+			return c = { randf(-2., 2.), randf(-2., 2.) };
+			//return c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
+		}
+
+	}
+
+	double contrib(int iter, std::vector<Complex>& csamples, const Complex& minc, const Complex& maxc)
+	{
+		double contrib = 0;
+		int inside = 0, i;
+
+		for (i = 0; i < iter; i++)
+			if (csamples[i].re >= minc.re && csamples[i].re < maxc.re && csamples[i].im >= minc.im && csamples[i].im < maxc.im)
+				contrib++;
+
+		return contrib / double(iter);
+	}
+
+	double TransitionProbability(double q1, double q2, double olen1, double olen2)
+	{
+		return (1.f - (q1 - olen1) / q1) / (1.f - (q2 - olen2) / q2);
+	}
 
 	// This is the main buddhabrot algorithm in one function
 	void process(
@@ -485,6 +644,122 @@ struct BuddhabrotRenderer
 		int wsamples = w * samples;
 		int hsamples = h * samples;
 
+		auto trajectory1 = [&](std::vector<int>& localData, std::vector<Complex>& csamples, double& l, double& o, Complex& bestC, double& bestCon, int s, int px = 0, int py = 0) {
+			// initialise the mandelbrot components
+			Complex c;
+			if (!useRandomGeneration)
+			{
+				if (cropSamples)
+					c = Complex(px * incw, py * inch);
+				else
+					c = Complex(px * incwF, py * inchF);
+				c = c + minc;
+			}
+			else if (cropSamples)
+			{
+				//c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
+				c = mutate(bestC, size, minc, maxc);
+			}
+			else
+				c = { randf(-2.,2.), randf(-2.,2.) };
+
+			Complex z(c);
+
+			// track i
+			int i = 0;
+			// we only care about trajetories that are less than max iterations 
+			// in length and that they fall within the radius bounds
+			for (; i < iter && z.mod2() < radius; ++i)
+			{
+				// translations through the shape (there are 4 axes)
+				z = z + zr;
+				c = c + cr;
+				// apply the magic formula
+				z = z * z + c;
+				// store our sample complex position for later
+				csamples[i] = z;
+			}
+
+			double contribution = contrib(i, csamples, minc, maxc);
+
+			double T1 = TransitionProbability(iter, l, i, o);
+			double T2 = TransitionProbability(l, iter, o, i);
+
+			double alpha = std::min<double>(1.f, std::exp(std::log(contribution * T1) - std::log(bestCon * T2)));
+			double R = randf();
+
+			if (alpha > R)
+			{
+				bestCon = contribution;
+				bestC = c;
+
+				l = iter;
+				o = i;
+
+				// if we want to rotate around a point, we must translate the point
+				// to the origin first (we will do it for Z later, remember 4 axes)
+				c = c - center;
+
+				// filter for minimum iterations
+				if (i >= floorIter)
+					// flags to check between normal and anti brot
+					if ((!anti && i < iter) || (anti && i == iter))
+						// iterate through our valid iterations samples
+						for (int j = 0; j < i; ++j)
+						{
+							// rotate around current center point //
+							Complex& t = csamples[j];
+
+							// if we want to rotate around a point, 
+							// we must translate the point to the origin first
+							t = t - center;
+
+							coords[0] = t.re;
+							coords[1] = t.im;
+							coords[2] = c.re;
+							coords[3] = c.im;
+
+							// now apply the rotation matrix on t and c (these are
+							// the points on the 4d volume)
+							double x1 = coords[volumeAX];
+							double y1 = coords[volumeAY];
+							double z1 = coords[volumeAZ];
+							double x2 = coords[volumeBX];
+							double y2 = coords[volumeBY];
+							double z2 = coords[volumeBZ];
+
+							// Apply the rotation matrix on t
+							double nx = x1 + (x2 - x1) * alpha;
+							double ny = y1 + (y2 - y1) * beta;
+							double nz = z1 + (z2 - z1) * theta;
+
+							// Apply the rotation matrix coefficients
+							double newX = Axx * nx + Axy * ny + Axz * nz;
+							double newY = Ayy * ny + Ayz * nz;
+							double newZ = Azx * nx + Azy * ny + Azz * nz;
+
+							// Update the point coordinates
+							t.re = newX;
+							t.im = newY;
+
+							// translate back to our point of interest
+							t = t + center;
+
+							// transform complex point into screen space point 
+							// (screen space coord)
+							int x = (t.re - minc.re) * cw;
+							int y = (t.im - minc.im) * ch;
+							// make sure it falls within in the screen buffer
+							if (x >= 0 && x < w && y >= 0 && y < h)
+								// incr each pixels components according to the 
+								// colour thresholds
+								localData[(y * w + x)] += escapeColouring
+								? j >= threshold
+								: j < iter;
+						}
+			}
+
+		};
 		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& csamples, int s, int px = 0, int py = 0) {
 			// initialise the mandelbrot components
 			Complex c;
@@ -497,9 +772,9 @@ struct BuddhabrotRenderer
 				c = c + minc;
 			}
 			else if (cropSamples)
-				c = { randf() * size.re + minc.re, randf() * size.im + minc.im };
+				c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
 			else
-				c = { randf() * 4.0f - 2.0f, randf() * 4.0f - 2.0f };
+				c = { randf(-2.,2.), randf(-2.,2.) };
 
 			Complex z(c);
 
@@ -557,7 +832,7 @@ struct BuddhabrotRenderer
 
 						// Apply the rotation matrix coefficients
 						double newX = Axx * nx + Axy * ny + Axz * nz;
-						double newY = Ayy * ny + Ayz * nz;
+						double newY = Axy * nx + Ayy * ny + Ayz * nz;
 						double newZ = Azx * nx + Azy * ny + Azz * nz;
 
 						// Update the point coordinates
@@ -585,34 +860,60 @@ struct BuddhabrotRenderer
 		// find the OpenMP thread count
 		if (threadCount == 0 || threadCount > omp_get_num_threads())
 #pragma omp parallel
-				threadCount = omp_get_num_threads();
+			threadCount = omp_get_num_threads();
 
 		// Allocate thread-local arrays to store intermediate results for each thread
 		std::vector<std::vector<int>> threadLocalData(threadCount, std::vector<int>(w * h, 0));
 
+		const int printInterval = 5000000; // Set the interval for printing the current samples
+
+		currentSamples = 0;
 #pragma omp parallel num_threads(std::max(1, threadCount - 1))
 		{
 			int threadId = omp_get_thread_num();
 			// pre allocate potential iteration samples
 			std::vector<Complex> csamples(iter);
 
+			double l = 0.0f;
+			double o = 0.0f;
+			Complex bestC;
+			double bestCon;
+
+			int thisSamples = 0;
+
 			if (useRandomGeneration)
 #pragma omp for
 				for (int s = 0; s < (int)samples; ++s)
-					trajectory(threadLocalData[threadId], csamples, s);
+				{
+					trajectory(threadLocalData[threadId], csamples,/* l, o, bestC, bestCon,*/ s);
+#pragma omp atomic
+					currentSamples += 1;
+					if (s % printInterval == 0) {
+#pragma omp critical
+						print("");
+					}
+				}
 			else
 #pragma omp for
 				for (int px = 0; px < wsamples; ++px)
 					for (int py = 0; py < hsamples; ++py)
-						trajectory(threadLocalData[threadId], csamples, 0, px, py);
+					{
+						trajectory(threadLocalData[threadId], csamples, /*l, o, bestC, bestCon,*/ 0, px, py);
+//#pragma omp atomic
+//						currentSamples += 1;
+//						if ((px * py) % printInterval == 0) {
+//#pragma omp critical
+//							print("");
+//						}
+					}
 		}
 
 		// Combine the thread-local data into the final 'data' array
-		for (int threadId = 0; threadId < threadLocalData.size(); ++threadId) 
-			for (int i = 0; i < w * h; ++i) 
+		for (int threadId = 0; threadId < threadLocalData.size(); ++threadId)
+			for (int i = 0; i < w * h; ++i)
 				data[i] += threadLocalData[threadId][i];
 
-		LOG("Progress: finished!");
+		print("Progress: finished!");
 	}
 
 	// classic sqrt colouring using gamma correction
@@ -630,6 +931,12 @@ struct BuddhabrotRenderer
 		// Apply the smoothstep interpolation formula
 		return x * x * (3 - 2 * x);
 	}
+
+	static double smootherstep(double x, double minVal, double maxVal)
+	{
+		return smoothstep(smoothstep(x, minVal, maxVal), minVal, maxVal);
+	}
+
 
 	// Apply box blur to a 2D array
 	static void boxBlur2D(int w, int h, int superSampleFactor, std::vector<int>& input, float* output, int radius)
@@ -753,9 +1060,9 @@ struct BuddhabrotRenderer
 	}
 
 	// writes pixelData out to a PNG using stb_image_write.h
-	static void writeToPNG(const std::string& filename, int w, int h, int c, std::vector<uint8_t>& data)
+	void writeToPNG(const std::string& filename, int w, int h, int c, std::vector<uint8_t>& data)
 	{
-		LOG("Writing out render to PNG image...");
+		print("Writing out render to PNG image...");
 		auto time = currentISO8601TimeUTC();
 		std::replace(time.begin(),
 			time.end(),
@@ -823,7 +1130,8 @@ int main(int argc, char* argv[])
 						if (!args.empty())
 						{
 							success = callback(args.top());
-							LOG("Invalid option value supplied: " << args.top());
+							if (!success)
+								LOG("Invalid option value supplied: " << args.top());
 							args.pop();
 						}
 						else
