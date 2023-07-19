@@ -172,8 +172,8 @@ struct BuddhabrotRenderer
 
 	BuddhabrotRenderer() {}
 
-	uint8_t* pixelData = nullptr;
-	int* buddhaData = nullptr;
+	std::vector<uint8_t> pixelData;
+	std::vector<int>  buddhaData;
 
 	std::string filename = "";
 
@@ -242,8 +242,8 @@ struct BuddhabrotRenderer
 			|| iterationsG > 0
 			|| iterationsB > 0) ? 3 : 1;
 
-		buddhaData = new int[width * height * superSampleFactor * superSampleFactor];
-		pixelData = new uint8_t[width * height * components];
+		buddhaData = std::vector<int>(width * height * superSampleFactor * superSampleFactor, 0);
+		pixelData = std::vector<uint8_t>(width * height * components, 0);
 	}
 
 	// Zeros all of the buddhaData array
@@ -431,7 +431,7 @@ struct BuddhabrotRenderer
 
 	// This is the main buddhabrot algorithm in one function
 	void process(
-		int* data, int w, int h, float samples, int iter, int radius = 4.0,
+		std::vector<int>& data, int w, int h, float samples, int iter, int radius = 4.0,
 		const Complex& minc = Complex(-2, -2),
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
@@ -632,7 +632,7 @@ struct BuddhabrotRenderer
 	}
 
 	// Apply box blur to a 2D array
-	static void boxBlur2D(int w, int h, int superSampleFactor, int* input, float* output, int radius)
+	static void boxBlur2D(int w, int h, int superSampleFactor, std::vector<int>& input, float* output, int radius)
 	{
 		int kernelSize = 2 * radius + 1;
 		std::vector<int> kernel(kernelSize, 1);
@@ -675,7 +675,7 @@ struct BuddhabrotRenderer
 	}
 
 	// Normalizes the buddhaData into pixelData with supersampling and box blur
-	static void getPixelData(int w, int h, int c, int superSampleFactor, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
+	static void getPixelData(int w, int h, int c, int superSampleFactor, std::vector<int>& buddhaData, std::vector<uint8_t>& pixelData, double gamma = 2.0, int o = -1)
 	{
 		int supersampledW = w * superSampleFactor;
 		int supersampledH = h * superSampleFactor;
@@ -722,7 +722,7 @@ struct BuddhabrotRenderer
 	}
 
 	// normalises the buddhaData into pixelData
-	static void getPixelData2(int w, int h, int c, int superSampleFactor, int* buddhaData, uint8_t* pixelData, double gamma = 2.0, int o = -1)
+	static void getPixelData2(int w, int h, int c, int superSampleFactor, std::vector<int>& buddhaData, std::vector<uint8_t>& pixelData, double gamma = 2.0, int o = -1)
 	{
 		double maxVal = 1;
 		for (int i = 0; i < w * h; ++i)
@@ -753,7 +753,7 @@ struct BuddhabrotRenderer
 	}
 
 	// writes pixelData out to a PNG using stb_image_write.h
-	static void writeToPNG(const std::string& filename, int w, int h, int c, uint8_t* data)
+	static void writeToPNG(const std::string& filename, int w, int h, int c, std::vector<uint8_t>& data)
 	{
 		LOG("Writing out render to PNG image...");
 		auto time = currentISO8601TimeUTC();
@@ -767,7 +767,7 @@ struct BuddhabrotRenderer
 		else
 			ss << filename << ".png";
 		createDirectories(ss.str().c_str());
-		stbi_write_png(ss.str().c_str(), w, h, c, data, w * c);
+		stbi_write_png(ss.str().c_str(), w, h, c, data.data(), w * c);
 	}
 
 };
