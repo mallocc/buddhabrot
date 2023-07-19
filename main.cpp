@@ -476,14 +476,6 @@ struct BuddhabrotRenderer
 
 		std::vector<double> coords = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-		// find the OpenMP thread count
-		if (threadCount == 0) {
-#pragma omp parallel
-			{
-				threadCount = omp_get_num_threads();
-			};
-		}
-
 		float incw = size.re / (float)(w * samples); // Width of each sample
 		float inch = size.im / (float)(h * samples); // Height of each sample
 
@@ -493,19 +485,15 @@ struct BuddhabrotRenderer
 		int wsamples = w * samples;
 		int hsamples = h * samples;
 
-		auto trajectory = [&](int s, int ax = 0, int ay = 0) {
-			// pre allocate potential iteration samples
-			Complex* csamples = new Complex[iter];
-
+		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& csamples, int s, int px = 0, int py = 0) {
 			// initialise the mandelbrot components
 			Complex c;
 			if (!useRandomGeneration)
 			{
-				s = ay * wsamples + ax;
 				if (cropSamples)
-					c = Complex(ax * incw, ay * inch);
+					c = Complex(px * incw, py * inch);
 				else
-					c = Complex(ax * incwF, ay * inchF);
+					c = Complex(px * incwF, py * inchF);
 				c = c + minc;
 			}
 			else if (cropSamples)
@@ -587,62 +575,42 @@ struct BuddhabrotRenderer
 						if (x >= 0 && x < w && y >= 0 && y < h)
 							// incr each pixels components according to the 
 							// colour thresholds
-							data[(y * w + x)] += escapeColouring
+							localData[(y * w + x)] += escapeColouring
 							? j >= threshold
 							: j < iter;
 					}
 
-			// clean up the potential iteration samples for this sample
-			delete[] csamples;
-
-			//if (!(s % (samples / 10)))
-			//	LOG("Progress: " << std::setprecision(2) << (s / (double)samples) * 100.0 << "%...");
-
 		};
 
+		// find the OpenMP thread count
+		if (threadCount == 0 || threadCount > omp_get_num_threads())
+#pragma omp parallel
+				threadCount = omp_get_num_threads();
 
-		Timer<std::chrono::nanoseconds> ttimer;
-		std::string timeUnit = getTimeUnit<std::chrono::nanoseconds>();
-		const int printInterval = 1000000; // Adjust the interval as desired
+		// Allocate thread-local arrays to store intermediate results for each thread
+		std::vector<std::vector<int>> threadLocalData(threadCount, std::vector<int>(w * h, 0));
 
-		int sampleCount = 0; // Atomic counter to keep track of the sample number
+#pragma omp parallel num_threads(std::max(1, threadCount - 1))
+		{
+			int threadId = omp_get_thread_num();
+			// pre allocate potential iteration samples
+			std::vector<Complex> csamples(iter);
 
-		// leave a core for the rest of the OS
-		if (useRandomGeneration)
-#pragma omp parallel for num_threads(std::max(1, threadCount - 1))
-			for (int s = 0; s < (int)samples; ++s)
-			{
-				trajectory(s);
-#pragma omp atomic
-				sampleCount++;
+			if (useRandomGeneration)
+#pragma omp for
+				for (int s = 0; s < (int)samples; ++s)
+					trajectory(threadLocalData[threadId], csamples, s);
+			else
+#pragma omp for
+				for (int px = 0; px < wsamples; ++px)
+					for (int py = 0; py < hsamples; ++py)
+						trajectory(threadLocalData[threadId], csamples, 0, px, py);
+		}
 
-				if (sampleCount % printInterval == 0)
-				{
-					// Print the sample count
-#pragma omp critical
-					{
-						std::cout << "Time left: " << convertToSeconds<std::chrono::nanoseconds>(bmTime * (samples - sampleCount)) << "s" << std::endl;
-					}
-				}
-			}
-		else
-#pragma omp parallel for num_threads(std::max(1, threadCount - 1))
-			for (int px = 0; px < wsamples; ++px)
-				for (int py = 0; py < hsamples; ++py)
-				{
-					trajectory(0, px, py);
-#pragma omp atomic
-					sampleCount++;
-
-					if (sampleCount % printInterval == 0)
-					{
-						// Print the sample count
-#pragma omp critical
-						{
-							std::cout << "Time left: " << convertToSeconds<std::chrono::nanoseconds>(bmTime * (wsamples * hsamples - sampleCount)) << "s" << std::endl;
-						}
-					}
-				}
+		// Combine the thread-local data into the final 'data' array
+		for (int threadId = 0; threadId < threadLocalData.size(); ++threadId) 
+			for (int i = 0; i < w * h; ++i) 
+				data[i] += threadLocalData[threadId][i];
 
 		LOG("Progress: finished!");
 	}
@@ -746,7 +714,7 @@ struct BuddhabrotRenderer
 				{
 					if (o == -1 || o == cc)
 					{
-						pixelData[(y * w + x) * c + cc] = pow(smoothstep((averagedValue - minValue) / range, 0.0, 1.0f), 1.0 / gamma) * UCHAR_MAX;
+						pixelData[(y * w + x) * c + cc] = pow(smoothstep((averagedValue - minValue) / range, 0.0f, 1.0f), 1.0 / gamma) * UCHAR_MAX;
 					}
 				}
 			}
@@ -992,7 +960,14 @@ int main(int argc, char* argv[])
 
 	std::srand(time(NULL));
 
+	Timer<std::chrono::milliseconds> totalTime;
+	totalTime.start();
+
 	bb.run();
+
+	totalTime.stop();
+
+	LOG("Total time: " << convertToSeconds<std::chrono::milliseconds>(totalTime.getAverageTime()) << "s");
 
 	LOG("Program exit");
 
