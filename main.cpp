@@ -415,7 +415,7 @@ struct BuddhabrotRenderer
 	}
 
 
-	const std::string& drawProgressBar(float progress) {
+	std::string drawProgressBar(float progress) {
 		int barWidth = 30;
 		int pos = static_cast<int>(barWidth * progress);
 
@@ -551,8 +551,8 @@ struct BuddhabrotRenderer
 
 			double zoom = 4.0f / size.re;
 
-			double r1 = (1.f / zoom) * 0.000001;
-			double r2 = (1.f / zoom) * 0.01;
+			double r1 = (1.f / zoom) * 0.001;
+			double r2 = (1.f / zoom) * 0.1;
 			double phi = randf(0., 1.) * 2.f * 3.1415926f;
 			double r = r2 * exp(-std::log(r2 / r1) * randf(0., 1.));
 
@@ -563,24 +563,23 @@ struct BuddhabrotRenderer
 		}
 		else
 		{
-			Complex n = c;
-			;
-			return c = { randf(-2., 2.), randf(-2., 2.) };
+			c = { randf(-2., 2.), randf(-2., 2.) };
+			return c;
 			//return c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
 		}
 
 	}
 
-	double contrib(int iter, std::vector<Complex>& csamples, const Complex& minc, const Complex& maxc)
+	double contrib(int len, std::vector<Complex>& orbit, const Complex& minc, const Complex& maxc)
 	{
 		double contrib = 0;
 		int inside = 0, i;
 
-		for (i = 0; i < iter; i++)
-			if (csamples[i].re >= minc.re && csamples[i].re < maxc.re && csamples[i].im >= minc.im && csamples[i].im < maxc.im)
+		for (i = 0; i < len; i++)
+			if (orbit[i].re >= minc.re && orbit[i].re < maxc.re && orbit[i].im >= minc.im && orbit[i].im < maxc.im)
 				contrib++;
 
-		return contrib / double(iter);
+		return contrib / double(len);
 	}
 
 	double TransitionProbability(double q1, double q2, double olen1, double olen2)
@@ -644,24 +643,86 @@ struct BuddhabrotRenderer
 		int wsamples = w * samples;
 		int hsamples = h * samples;
 
-		auto trajectory1 = [&](std::vector<int>& localData, std::vector<Complex>& csamples, double& l, double& o, Complex& bestC, double& bestCon, int s, int px = 0, int py = 0) {
+		auto evalOrbit = [&](std::vector<Complex>& orbit, int& i, Complex& c) {
+			Complex z(c);
+
+			// we only care about trajetories that are less than max iterations 
+			// in length and that they fall within the radius bounds
+			for (i = 0; i < iter && z.mod2() < radius; ++i)
+			{
+				// apply the magic formula
+				z = z * z + c;
+				// store our sample complex position for later
+				orbit[i] = z;
+			}
+
+			if (z.mod2() < radius)
+				return true;
+
+			return false;
+		};
+
+		std::function<bool(std::vector<Complex>&, Complex&, double, double, double, int)> FindInitialSample =
+			[&](std::vector<Complex>& orbit, Complex& c, double x, double y, double rad, int f) -> bool
+		{
+			if (f > 100)
+			{
+				return false;
+			}
+
+			Complex ct = c, tmp, seed;
+
+			int m = -1, i;
+			double closest = 1e20;
+
+			for (i = 0; i < 100; i++)
+			{
+				tmp = { randf(-rad, rad), randf(-rad, rad) };
+				tmp.re += x;
+				tmp.im += y;
+				int orbitLen = 0;
+				if (!evalOrbit(orbit, orbitLen, tmp))
+					continue;
+
+				if (contrib(orbitLen, orbit, minc, maxc) > 0.0f)
+				{
+					c = tmp;
+					return true;
+				}
+
+				for (int q = 0; q < orbit.size(); q++)
+				{
+					double d = (orbit[q] - center).mod2();
+
+					if (d < closest)
+						m = q,
+						closest = d,
+						seed = tmp;
+				}
+			}
+
+			return FindInitialSample(orbit, c, seed.re, seed.im, rad / 2.f, f + 1);
+		};
+
+		std::vector<Complex> csamples;
+		std::vector<double> consamples;
+
+		std::vector<Complex> tempOrbit(iter);
+		for (int e = 0; e < 30; ++e)
+		{
+			Complex m;
+			if (FindInitialSample(tempOrbit, m, 0, 0, radius, 0))
+			{
+				int orbitLen = 0;
+				evalOrbit(tempOrbit, orbitLen, m);
+				csamples.push_back(m);
+				consamples.push_back(contrib(orbitLen, tempOrbit, minc, maxc));
+			}
+		}
+
+		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& orbit, double& l, double& o, Complex& bestC, double& bestCon) {
 			// initialise the mandelbrot components
-			Complex c;
-			if (!useRandomGeneration)
-			{
-				if (cropSamples)
-					c = Complex(px * incw, py * inch);
-				else
-					c = Complex(px * incwF, py * inchF);
-				c = c + minc;
-			}
-			else if (cropSamples)
-			{
-				//c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
-				c = mutate(bestC, size, minc, maxc);
-			}
-			else
-				c = { randf(-2.,2.), randf(-2.,2.) };
+			Complex c = mutate(bestC, size, minc, maxc);
 
 			Complex z(c);
 
@@ -677,90 +738,92 @@ struct BuddhabrotRenderer
 				// apply the magic formula
 				z = z * z + c;
 				// store our sample complex position for later
-				csamples[i] = z;
+				orbit[i] = z;
 			}
 
-			double contribution = contrib(i, csamples, minc, maxc);
-
-			double T1 = TransitionProbability(iter, l, i, o);
-			double T2 = TransitionProbability(l, iter, o, i);
-
-			double alpha = std::min<double>(1.f, std::exp(std::log(contribution * T1) - std::log(bestCon * T2)));
-			double R = randf();
-
-			if (alpha > R)
+			// filter for minimum iterations
+			// flags to check between normal and anti brot
+			if (i >= floorIter && ((!anti && i < iter) || (anti && i == iter)))
 			{
-				bestCon = contribution;
-				bestC = c;
+				double contribution = contrib(i, orbit, minc, maxc);
 
-				l = iter;
-				o = i;
+				double T1 = TransitionProbability(iter, l, i, o);
+				double T2 = TransitionProbability(l, iter, o, i);
 
-				// if we want to rotate around a point, we must translate the point
-				// to the origin first (we will do it for Z later, remember 4 axes)
-				c = c - center;
+				double alpha = std::min<double>(1.f, std::exp(std::log(contribution * T1) - std::log(bestCon * T2)));
+				double R = randf();
 
-				// filter for minimum iterations
-				if (i >= floorIter)
-					// flags to check between normal and anti brot
-					if ((!anti && i < iter) || (anti && i == iter))
-						// iterate through our valid iterations samples
-						for (int j = 0; j < i; ++j)
-						{
-							// rotate around current center point //
-							Complex& t = csamples[j];
+				if (alpha > R)
+				{
+					bestCon = contribution;
+					bestC = c;
 
-							// if we want to rotate around a point, 
-							// we must translate the point to the origin first
-							t = t - center;
+					l = iter;
+					o = i;
 
-							coords[0] = t.re;
-							coords[1] = t.im;
-							coords[2] = c.re;
-							coords[3] = c.im;
+					// if we want to rotate around a point, we must translate the point
+					// to the origin first (we will do it for Z later, remember 4 axes)
+					c = c - center;
 
-							// now apply the rotation matrix on t and c (these are
-							// the points on the 4d volume)
-							double x1 = coords[volumeAX];
-							double y1 = coords[volumeAY];
-							double z1 = coords[volumeAZ];
-							double x2 = coords[volumeBX];
-							double y2 = coords[volumeBY];
-							double z2 = coords[volumeBZ];
 
-							// Apply the rotation matrix on t
-							double nx = x1 + (x2 - x1) * alpha;
-							double ny = y1 + (y2 - y1) * beta;
-							double nz = z1 + (z2 - z1) * theta;
+					// iterate through our valid iterations samples
+					for (int j = 0; j < i; ++j)
+					{
+						// rotate around current center point //
+						Complex& t = orbit[j];
 
-							// Apply the rotation matrix coefficients
-							double newX = Axx * nx + Axy * ny + Axz * nz;
-							double newY = Ayy * ny + Ayz * nz;
-							double newZ = Azx * nx + Azy * ny + Azz * nz;
+						// if we want to rotate around a point, 
+						// we must translate the point to the origin first
+						t = t - center;
 
-							// Update the point coordinates
-							t.re = newX;
-							t.im = newY;
+						coords[0] = t.re;
+						coords[1] = t.im;
+						coords[2] = c.re;
+						coords[3] = c.im;
 
-							// translate back to our point of interest
-							t = t + center;
+						// now apply the rotation matrix on t and c (these are
+						// the points on the 4d volume)
+						double x1 = coords[volumeAX];
+						double y1 = coords[volumeAY];
+						double z1 = coords[volumeAZ];
+						double x2 = coords[volumeBX];
+						double y2 = coords[volumeBY];
+						double z2 = coords[volumeBZ];
 
-							// transform complex point into screen space point 
-							// (screen space coord)
-							int x = (t.re - minc.re) * cw;
-							int y = (t.im - minc.im) * ch;
-							// make sure it falls within in the screen buffer
-							if (x >= 0 && x < w && y >= 0 && y < h)
-								// incr each pixels components according to the 
-								// colour thresholds
-								localData[(y * w + x)] += escapeColouring
-								? j >= threshold
-								: j < iter;
-						}
+						// Apply the rotation matrix on t
+						double nx = x1 + (x2 - x1) * alpha;
+						double ny = y1 + (y2 - y1) * beta;
+						double nz = z1 + (z2 - z1) * theta;
+
+						// Apply the rotation matrix coefficients
+						double newX = Axx * nx + Axy * ny + Axz * nz;
+						double newY = Ayy * ny + Ayz * nz;
+						double newZ = Azx * nx + Azy * ny + Azz * nz;
+
+						// Update the point coordinates
+						t.re = newX;
+						t.im = newY;
+
+						// translate back to our point of interest
+						t = t + center;
+
+						// transform complex point into screen space point 
+						// (screen space coord)
+						int x = (t.re - minc.re) * cw;
+						int y = (t.im - minc.im) * ch;
+						// make sure it falls within in the screen buffer
+						if (x >= 0 && x < w && y >= 0 && y < h)
+							// incr each pixels components according to the 
+							// colour thresholds
+							localData[(y * w + x)] += escapeColouring
+							? j >= threshold
+							: j < iter;
+					}
+				}
 			}
 
 		};
-		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& csamples, int s, int px = 0, int py = 0) {
+		auto trajectory1 = [&](std::vector<int>& localData, std::vector<Complex>& orbit, int s, int px = 0, int py = 0) {
 			// initialise the mandelbrot components
 			Complex c;
 			if (!useRandomGeneration)
@@ -790,7 +853,7 @@ struct BuddhabrotRenderer
 				// apply the magic formula
 				z = z * z + c;
 				// store our sample complex position for later
-				csamples[i] = z;
+				orbit[i] = z;
 			}
 
 			// if we want to rotate around a point, we must translate the point
@@ -805,7 +868,7 @@ struct BuddhabrotRenderer
 					for (int j = 0; j < i; ++j)
 					{
 						// rotate around current center point //
-						Complex& t = csamples[j];
+						Complex& t = orbit[j];
 
 						// if we want to rotate around a point, 
 						// we must translate the point to the origin first
@@ -868,44 +931,52 @@ struct BuddhabrotRenderer
 		const int printInterval = 5000000; // Set the interval for printing the current samples
 
 		currentSamples = 0;
+#ifndef _DEBUG
 #pragma omp parallel num_threads(std::max(1, threadCount - 1))
+#endif
 		{
 			int threadId = omp_get_thread_num();
 			// pre allocate potential iteration samples
-			std::vector<Complex> csamples(iter);
+			std::vector<Complex> orbit(iter);
 
 			double l = 0.0f;
 			double o = 0.0f;
-			Complex bestC;
-			double bestCon;
+			std::vector<Complex> localCSamples = csamples;
+			std::vector<double> localCon = consamples;
 
 			int thisSamples = 0;
 
-			if (useRandomGeneration)
+			//if (useRandomGeneration)
+#ifndef _DEBUG
 #pragma omp for
-				for (int s = 0; s < (int)samples; ++s)
+#endif
+			for (int s = 0; s < (int)samples; ++s)
 				{
-					trajectory(threadLocalData[threadId], csamples,/* l, o, bestC, bestCon,*/ s);
+					trajectory(threadLocalData[threadId], orbit, l, o, localCSamples[s % localCSamples.size()], localCon[s % localCon.size()]);
+#ifndef _DEBUG
 #pragma omp atomic
+#endif
 					currentSamples += 1;
 					if (s % printInterval == 0) {
+#ifndef _DEBUG
 #pragma omp critical
+#endif
 						print("");
 					}
 				}
-			else
-#pragma omp for
-				for (int px = 0; px < wsamples; ++px)
-					for (int py = 0; py < hsamples; ++py)
-					{
-						trajectory(threadLocalData[threadId], csamples, /*l, o, bestC, bestCon,*/ 0, px, py);
-//#pragma omp atomic
-//						currentSamples += 1;
-//						if ((px * py) % printInterval == 0) {
-//#pragma omp critical
-//							print("");
-//						}
-					}
+//			else
+//#pragma omp for
+//				for (int px = 0; px < wsamples; ++px)
+//					for (int py = 0; py < hsamples; ++py)
+//					{
+//						trajectory(threadLocalData[threadId], orbit, l, o, bestC, bestCon, 0, px, py);
+//						//#pragma omp atomic
+//						//						currentSamples += 1;
+//						//						if ((px * py) % printInterval == 0) {
+//						//#pragma omp critical
+//						//							print("");
+//						//						}
+//					}
 		}
 
 		// Combine the thread-local data into the final 'data' array
