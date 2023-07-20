@@ -199,9 +199,12 @@ struct BuddhabrotRenderer
 	{
 		Complex v0 = Complex(-2, -1.5);
 		Complex v1 = Complex(1, 1.5);
+		Complex zt = Complex();
+		Complex ct = Complex();
 		double alpha = 0;
 		double beta = 0;
 		double theta = 0;
+		double phi = 0;
 		int steps = 1;
 		double gamma = 2;
 		bool bezier = false;
@@ -262,6 +265,9 @@ struct BuddhabrotRenderer
 
 	float bmTime = 0.0f;
 
+	std::vector<Complex> csamples;
+	std::vector<double> consamples;
+
 	float benchmark()
 	{
 		const int numIterations = 1000000; // Adjust the number of iterations as desired
@@ -308,11 +314,16 @@ struct BuddhabrotRenderer
 	// Processes a single frame with the provided properties
 	void processFrame(const Complex& v0, const Complex& v1,
 		const Complex& zr, const Complex& cr,
-		const double alphaL, const double betaL, const double thetaL,
+		const double alphaL, const double betaL, const double thetaL, const double phiL,
 		const double gamma,
 		const int step)
 	{
 		bool componentOverride = false;
+
+		print("Generateing intial samples...");
+
+		generateInitialSamples(std::max<int>(iterationsR, std::max<int>(iterationsG, std::max<int>(iterationsR, iterations))),
+			v0, v1);
 
 		if (iterationsR > 0)
 		{
@@ -499,8 +510,11 @@ struct BuddhabrotRenderer
 					double alphaL = stages[stage].alpha;
 					double betaL = stages[stage].beta;
 					double thetaL = stages[stage].theta;
+					double phiL = stages[stage].phi;
 					Complex v0 = stages[stage].v0;
 					Complex v1 = stages[stage].v1;
+					Complex zt = stages[stage].zt;
+					Complex ct = stages[stage].ct;
 					double gamma = stages[stage].gamma;
 
 					if (stages.size() > 1)
@@ -512,16 +526,21 @@ struct BuddhabrotRenderer
 						alphaL = (b * (stages[stage + 1].alpha - stages[stage].alpha) + stages[stage].alpha) / 180 * PI;
 						betaL = (b * (stages[stage + 1].beta - stages[stage].beta) + stages[stage].beta) / 180 * PI;
 						thetaL = (b * (stages[stage + 1].theta - stages[stage].theta) + stages[stage].theta) / 180 * PI;
+						phiL = (b * (stages[stage + 1].phi - stages[stage].phi) + stages[stage].phi) / 180 * PI;
 						gamma = (b * (stages[stage + 1].gamma - stages[stage].gamma) + stages[stage].gamma);
 						v0.re = (b * (stages[stage + 1].v0.re - stages[stage].v0.re) + stages[stage].v0.re);
 						v0.im = (b * (stages[stage + 1].v0.im - stages[stage].v0.im) + stages[stage].v0.im);
 						v1.re = (b * (stages[stage + 1].v1.re - stages[stage].v1.re) + stages[stage].v1.re);
 						v1.im = (b * (stages[stage + 1].v1.im - stages[stage].v1.im) + stages[stage].v1.im);
+						zt.im = (b * (stages[stage + 1].zt.re - stages[stage].zt.re) + stages[stage].zt.re);
+						zt.im = (b * (stages[stage + 1].zt.im - stages[stage].zt.im) + stages[stage].zt.im);
+						ct.im = (b * (stages[stage + 1].ct.re - stages[stage].ct.re) + stages[stage].ct.re);
+						ct.im = (b * (stages[stage + 1].ct.im - stages[stage].ct.im) + stages[stage].ct.im);
 					}
 
 					timer.start();
 
-					processFrame(v0, v1, zr, cr, alphaL, betaL, thetaL, gamma, stepC + counter);
+					processFrame(v0, v1, zt, ct, alphaL, betaL, thetaL, phiL, gamma, stepC + counter);
 
 					timer.stop();
 
@@ -531,7 +550,7 @@ struct BuddhabrotRenderer
 		else if (!stages.empty())
 		{
 			clearAll();
-			processFrame(stages[0].v0, stages[0].v1, zr, cr, stages[0].alpha / 180 * PI, stages[0].beta / 180 * PI, stages[0].theta / 180 * PI, stages[0].gamma, 0);
+			processFrame(stages[0].v0, stages[0].v1, zr, cr, stages[0].alpha / 180 * PI, stages[0].beta / 180 * PI, stages[0].theta / 180 * PI, stages[0].phi / 180 * PI, stages[0].gamma, 0);
 		}
 	}
 
@@ -545,13 +564,13 @@ struct BuddhabrotRenderer
 
 	Complex mutate(Complex& c, Complex& size, const Complex& minc, const Complex& maxc)
 	{
-		if (randf(0., 5.) < 4)
+		if (randf(0, 1) < 0.99)
 		{
 			Complex n = c;
 
 			double zoom = 4.0f / size.re;
 
-			double r1 = (1.f / zoom) * 0.001;
+			double r1 = (1.f / zoom) * 0.01;
 			double r2 = (1.f / zoom) * 0.1;
 			double phi = randf(0., 1.) * 2.f * 3.1415926f;
 			double r = r2 * exp(-std::log(r2 / r1) * randf(0., 1.));
@@ -563,9 +582,9 @@ struct BuddhabrotRenderer
 		}
 		else
 		{
-			c = { randf(-2., 2.), randf(-2., 2.) };
+			c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
+			//c = { randf(-2., 2.), randf(-2., 2.) };
 			return c;
-			//return c = { randf(minc.re, maxc.re), randf(minc.im, maxc.im) };
 		}
 
 	}
@@ -587,13 +606,114 @@ struct BuddhabrotRenderer
 		return (1.f - (q1 - olen1) / q1) / (1.f - (q2 - olen2) / q2);
 	}
 
+	void generateInitialSamples(int iter,
+		const Complex& minc = Complex(-2, -2),
+		const Complex& maxc = Complex(2, 2),
+		const Complex& zr = Complex(),
+		const Complex& cr = Complex())
+	{
+		// find the size of the viewable complex plane
+		Complex size = Complex(maxc) - minc;
+
+		// the center of the viewable complex plane
+		Complex center = size / 2.0 + minc;
+
+		auto evalOrbit = [&](std::vector<Complex>& orbit, int& i, Complex& c) {
+			Complex z(c);
+
+			// we only care about trajetories that are less than max iterations 
+			// in length and that they fall within the radius bounds
+			for (i = 0; i < iter && z.mod2() < radius; ++i)
+			{
+				// translations through the shape (there are 4 axes)
+				z = z + zr;
+				c = c + cr;
+				// apply the magic formula
+				z = z * z + c;
+				// store our sample complex position for later
+				orbit[i] = z;
+			}
+
+			if (z.mod2() > radius)
+				return true;
+
+			return false;
+		};
+
+		std::function<bool(std::vector<Complex>&, Complex&, double, double, double, int)> FindInitialSample =
+			[&](std::vector<Complex>& orbit, Complex& c, double x, double y, double rad, int f) -> bool
+		{
+			if (f > 150)
+			{
+				return false;
+			}
+
+			Complex ct = c, tmp, seed;
+
+			int m = -1, i;
+			double closest = 1e20;
+
+			for (i = 0; i < 150; i++)
+			{
+				tmp = { randf(-rad, rad), randf(-rad, rad) };
+				tmp.re += x;
+				tmp.im += y;
+				int orbitLen = 0;
+				if (!evalOrbit(orbit, orbitLen, tmp))
+					continue;
+
+				if (contrib(orbitLen, orbit, minc, maxc) > 0.0f)
+				{
+					c = tmp;
+					return true;
+				}
+
+				for (int q = 0; q < orbit.size(); q++)
+				{
+					double d = (orbit[q] - center).mod2();
+
+					if (d < closest)
+						m = q,
+						closest = d,
+						seed = tmp;
+				}
+			}
+
+			return FindInitialSample(orbit, c, seed.re, seed.im, rad, f + 1);
+		};
+
+		csamples = {};
+		consamples = {};
+
+		std::vector<Complex> tempOrbit(iter);
+#ifndef _DEBUG
+#pragma omp parallel for num_threads(std::max(1, omp_get_num_threads() - 1))
+#endif
+		for (int e = 0; e < 30; ++e)
+		{
+			Complex m;
+			if (FindInitialSample(tempOrbit, m, 0, 0, radius / 2.0f, 0))
+			{
+				int orbitLen = 0;
+				evalOrbit(tempOrbit, orbitLen, m);
+#ifndef _DEBUG
+#pragma omp critical
+#endif
+				{
+					csamples.push_back(m);
+					consamples.push_back(contrib(orbitLen, tempOrbit, minc, maxc));
+				}
+			}
+		}
+	}
+
 	// This is the main buddhabrot algorithm in one function
 	void process(
 		std::vector<int>& data, int w, int h, float samples, int iter, int radius = 4.0,
 		const Complex& minc = Complex(-2, -2),
 		const Complex& maxc = Complex(2, 2),
 		const Complex& zr = Complex(), const Complex& cr = Complex(),
-		double alpha = 0, double beta = 0, double theta = 0, bool anti = false,
+		double alpha = 0, double beta = 0, double theta = 0, double phi = 0, bool anti = false,
 		int threshold = 0, int floorIter = 0, int threadCount = 0)
 	{
 		// pre commpute //
@@ -625,12 +745,12 @@ struct BuddhabrotRenderer
 		// find the size of the viewable complex plane
 		Complex size = Complex(maxc) - minc;
 
+		// the center of the viewable complex plane
+		Complex center = size / 2.0 + minc;
+
 		// for use in the loop for converting back to screen space
 		double cw = w / (size.re);
 		double ch = h / (size.im);
-
-		// the center of the viewable complex plane
-		Complex center = size / 2.0 + minc;
 
 		std::vector<double> coords = { 0.0f, 0.0f, 0.0f, 0.0f };
 
@@ -643,88 +763,13 @@ struct BuddhabrotRenderer
 		int wsamples = w * samples;
 		int hsamples = h * samples;
 
-		auto evalOrbit = [&](std::vector<Complex>& orbit, int& i, Complex& c) {
-			Complex z(c);
-
-			// we only care about trajetories that are less than max iterations 
-			// in length and that they fall within the radius bounds
-			for (i = 0; i < iter && z.mod2() < radius; ++i)
-			{
-				// apply the magic formula
-				z = z * z + c;
-				// store our sample complex position for later
-				orbit[i] = z;
-			}
-
-			if (z.mod2() < radius)
-				return true;
-
-			return false;
-		};
-
-		std::function<bool(std::vector<Complex>&, Complex&, double, double, double, int)> FindInitialSample =
-			[&](std::vector<Complex>& orbit, Complex& c, double x, double y, double rad, int f) -> bool
-		{
-			if (f > 100)
-			{
-				return false;
-			}
-
-			Complex ct = c, tmp, seed;
-
-			int m = -1, i;
-			double closest = 1e20;
-
-			for (i = 0; i < 100; i++)
-			{
-				tmp = { randf(-rad, rad), randf(-rad, rad) };
-				tmp.re += x;
-				tmp.im += y;
-				int orbitLen = 0;
-				if (!evalOrbit(orbit, orbitLen, tmp))
-					continue;
-
-				if (contrib(orbitLen, orbit, minc, maxc) > 0.0f)
-				{
-					c = tmp;
-					return true;
-				}
-
-				for (int q = 0; q < orbit.size(); q++)
-				{
-					double d = (orbit[q] - center).mod2();
-
-					if (d < closest)
-						m = q,
-						closest = d,
-						seed = tmp;
-				}
-			}
-
-			return FindInitialSample(orbit, c, seed.re, seed.im, rad / 2.f, f + 1);
-		};
-
-		std::vector<Complex> csamples;
-		std::vector<double> consamples;
-
-		std::vector<Complex> tempOrbit(iter);
-		for (int e = 0; e < 30; ++e)
-		{
-			Complex m;
-			if (FindInitialSample(tempOrbit, m, 0, 0, radius, 0))
-			{
-				int orbitLen = 0;
-				evalOrbit(tempOrbit, orbitLen, m);
-				csamples.push_back(m);
-				consamples.push_back(contrib(orbitLen, tempOrbit, minc, maxc));
-			}
-		}
-
-		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& orbit, double& l, double& o, Complex& bestC, double& bestCon) {
+		auto trajectory = [&](std::vector<int>& localData, std::vector<Complex>& orbit, Complex& bestC, double& bestCon) {
 			// initialise the mandelbrot components
 			Complex c = mutate(bestC, size, minc, maxc);
 
 			Complex z(c);
+
+			bool goodOrbit = false;
 
 			// track i
 			int i = 0;
@@ -739,6 +784,10 @@ struct BuddhabrotRenderer
 				z = z * z + c;
 				// store our sample complex position for later
 				orbit[i] = z;
+
+				if (!goodOrbit)
+					if (orbit[i].re >= minc.re && orbit[i].re < maxc.re && orbit[i].im >= minc.im && orbit[i].im < maxc.im)
+						goodOrbit = true;
 			}
 
 			// filter for minimum iterations
@@ -747,19 +796,19 @@ struct BuddhabrotRenderer
 			{
 				double contribution = contrib(i, orbit, minc, maxc);
 
-				double T1 = TransitionProbability(iter, l, i, o);
-				double T2 = TransitionProbability(l, iter, o, i);
+				//double T1 = TransitionProbability(iter, l, i, o);
+				//double T2 = TransitionProbability(l, iter, o, i);
 
-				double alpha = std::min<double>(1.f, std::exp(std::log(contribution * T1) - std::log(bestCon * T2)));
-				double R = randf();
+				//double alpha = std::min<double>(1.f, std::exp(std::log(contribution * T1) - std::log(bestCon * T2)));
+				//double R = randf();
 
-				if (alpha > R)
+				if (goodOrbit)
 				{
 					bestCon = contribution;
 					bestC = c;
 
-					l = iter;
-					o = i;
+					//l = iter;
+					//o = i;
 
 					// if we want to rotate around a point, we must translate the point
 					// to the origin first (we will do it for Z later, remember 4 axes)
@@ -803,7 +852,12 @@ struct BuddhabrotRenderer
 						// Update the point coordinates
 						t.re = newX;
 						t.im = newY;
-
+#ifdef TEST
+						t.re = t.re * cos(alpha + theta)
+							+ c.re * sin(alpha + theta);
+						t.im = t.im * cos(beta + theta)
+							- c.im * sin(beta + theta);
+#endif
 						// translate back to our point of interest
 						t = t + center;
 
@@ -951,32 +1005,33 @@ struct BuddhabrotRenderer
 #pragma omp for
 #endif
 			for (int s = 0; s < (int)samples; ++s)
-				{
-					trajectory(threadLocalData[threadId], orbit, l, o, localCSamples[s % localCSamples.size()], localCon[s % localCon.size()]);
+			{
+				trajectory(threadLocalData[threadId], orbit, localCSamples[s % localCSamples.size()], localCon[s % localCon.size()]);
+				//trajectory(threadLocalData[threadId], orbit, s);
 #ifndef _DEBUG
 #pragma omp atomic
 #endif
-					currentSamples += 1;
-					if (s % printInterval == 0) {
+				currentSamples += 1;
+				if (s % printInterval == 0) {
 #ifndef _DEBUG
 #pragma omp critical
 #endif
-						print("");
-					}
+					print("");
 				}
-//			else
-//#pragma omp for
-//				for (int px = 0; px < wsamples; ++px)
-//					for (int py = 0; py < hsamples; ++py)
-//					{
-//						trajectory(threadLocalData[threadId], orbit, l, o, bestC, bestCon, 0, px, py);
-//						//#pragma omp atomic
-//						//						currentSamples += 1;
-//						//						if ((px * py) % printInterval == 0) {
-//						//#pragma omp critical
-//						//							print("");
-//						//						}
-//					}
+			}
+			//			else
+			//#pragma omp for
+			//				for (int px = 0; px < wsamples; ++px)
+			//					for (int py = 0; py < hsamples; ++py)
+			//					{
+			//						trajectory(threadLocalData[threadId], orbit, l, o, bestC, bestCon, 0, px, py);
+			//						//#pragma omp atomic
+			//						//						currentSamples += 1;
+			//						//						if ((px * py) % printInterval == 0) {
+			//						//#pragma omp critical
+			//						//							print("");
+			//						//						}
+			//					}
 		}
 
 		// Combine the thread-local data into the final 'data' array
@@ -1263,6 +1318,14 @@ int main(int argc, char* argv[])
 						checkAndSet([&](const std::string& in) { stage.v1.re = std::stof(in); });
 					else if (option == "im1" || option == "y1" || option == "imaginary1")
 						checkAndSet([&](const std::string& in) { stage.v1.im = std::stof(in); });
+					else if (option == "ztr")
+						checkAndSet([&](const std::string& in) { stage.zt.re = std::stof(in); });
+					else if (option == "zti")
+						checkAndSet([&](const std::string& in) { stage.zt.im = std::stof(in); });
+					else if (option == "ctr")
+						checkAndSet([&](const std::string& in) { stage.ct.re = std::stof(in); });
+					else if (option == "cti")
+						checkAndSet([&](const std::string& in) { stage.ct.im = std::stof(in); });
 					else if (option == "s" || option == "samples")
 						checkAndSet([&](const std::string& in) { bb.samples = std::stof(in); });
 					else if (option == "o" || option == "output")
