@@ -3,6 +3,8 @@ Utitilty to generate density plot of mandelbrot set trajectories.
 
 (Planning to make OpenCL version of this, though the code should be fairly portable to OpenCL kernel code.)
 
+https://github.com/mallocc/buddhabrot-opencl
+
 -----
 
 |![](https://github.com/mallocc/buddhabrot/blob/main/tour_demo.gif)|
